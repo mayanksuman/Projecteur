@@ -1,0 +1,11 @@
+/media/data/development/internet/Projecteur/build/CMakeFiles/install/strip.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/install/local.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/install.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/list_install_components.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/rebuild_cache.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/projecteur.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/dist-package.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/non-sources.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/source-archive.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/edit_cache.dir
+/media/data/development/internet/Projecteur/build/CMakeFiles/projecteur_autogen.dir

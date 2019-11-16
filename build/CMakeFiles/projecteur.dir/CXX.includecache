@@ -1,0 +1,16 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/media/data/development/internet/Projecteur/build/projecteur_autogen/CCBC4FUR7J/qrc_qml.cpp
+
+/media/data/development/internet/Projecteur/build/version/projecteur/projecteur-GitVersion.cc
+projecteur-GitVersion.h
+/media/data/development/internet/Projecteur/build/version/projecteur/projecteur-GitVersion.h
+
+/media/data/development/internet/Projecteur/build/version/projecteur/projecteur-GitVersion.h
+

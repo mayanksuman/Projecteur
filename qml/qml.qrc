@@ -5,5 +5,9 @@
         <file>spotshapes/Square.qml</file>
         <file>spotshapes/Star.qml</file>
         <file>spotshapes/Ngon.qml</file>
+        <file>preferencesdlg.qml</file>
+        <file>preference_pages/general.qml</file>
+        <file>preference_pages/spotmodes.qml</file>
+        <file>preference_pages/timer.qml</file>
     </qresource>
 </RCC>

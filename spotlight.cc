@@ -149,13 +149,18 @@ Spotlight::ConnectionResult Spotlight::connectSpotlightDevice(const QString& dev
   {
     struct input_event ev;
     const auto sz = ::read(fd, &ev, sizeof(ev));
-    if (sz == sizeof(ev) && ev.type & EV_REL) // only for relative mouse events
+	//printf("%u :\t %u\n", ev.type, EV_KEY);
+    if (sz == sizeof(ev))
     {
-      if (!m_activeTimer->isActive()) {
-        m_spotActive = true;
-        emit spotActiveChanged(true);
-      }
-      m_activeTimer->start();
+      if (ev.type == EV_REL) // only for relative mouse events
+	  {
+	    if (!m_activeTimer->isActive()) {
+          m_spotActive = true;
+          emit spotActiveChanged(true);
+        }
+        m_activeTimer->start();
+	  }
+	  else if (ev.type == EV_KEY){printf("clicked");}
     }
     else if (sz == -1)
     {

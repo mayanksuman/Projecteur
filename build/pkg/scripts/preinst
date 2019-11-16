@@ -1,0 +1,4 @@
+# Create `spotlight-device` group if it does not exist (used in udev rules).
+if ! getent group spotlight-device >/dev/null; then
+    groupadd --system --force spotlight-device
+fi

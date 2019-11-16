@@ -1,0 +1,8 @@
+# Hashes of file build rules.
+aea6d549ce76bc452315cb9cb0b5ec72 CMakeFiles/dist-package
+9f5e08eca1edbd6f4da6548a16d955a7 CMakeFiles/projecteur_autogen
+8c9557b56a0d6245517100a4b76f206e CMakeFiles/source-archive
+b86539ee01a9fe50784bac3ca97926c5 archive_output/projecteur-0.6-alpha.28_source.tar.gz
+2719c0aa9ba09f14e557d592688d8fcd archive_stage/projecteur-0.6-alpha.28_source.git-stage.tar
+19ae5bf714e0a9b27ed1edfd83eca815 projecteur_autogen/CCBC4FUR7J/qrc_qml.cpp
+37ccf501c27b4f3cc00780804ea5095e projecteur_autogen/EWIEGA46WW/qrc_resources.cpp
