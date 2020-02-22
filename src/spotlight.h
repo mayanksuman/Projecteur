@@ -35,6 +35,7 @@ public:
   bool anySpotlightDeviceConnected() const;
   const VirtualDevice* virtualDevice() const;
   QStringList connectedDevices() const;
+  int dblClickDuration = 300;
 
   struct Device {
     enum class BusType { Unknown, Usb, Bluetooth };
@@ -64,6 +65,7 @@ signals:
   void disconnected(const QString& devicePath); //!< signal for every device disconnected
   void anySpotlightDeviceConnectedChanged(bool connected);
   void spotActiveChanged(bool isActive);
+  void spotModeChanged();
 
 private:
   enum class ConnectionResult { CouldNotOpen, NotASpotlightDevice, Connected };
@@ -77,5 +79,7 @@ private:
   std::map<QString, QScopedPointer<QSocketNotifier>> m_eventNotifiers;
   QTimer* m_activeTimer = nullptr;
   bool m_spotActive = false;
+  bool m_clicked = false;
+  QTimer* m_clickTimer = nullptr;
   std::unique_ptr<VirtualDevice> m_virtualDevice;
 };

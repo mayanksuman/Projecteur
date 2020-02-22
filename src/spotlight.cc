@@ -99,17 +99,29 @@ Spotlight::Spotlight(QObject* parent, Options options)
   : QObject(parent)
   , m_options(std::move(options))
   , m_activeTimer(new QTimer(this))
+  , m_clickTimer(new QTimer(this))
 {
   m_activeTimer->setSingleShot(true);
   m_activeTimer->setInterval(600);
+  m_clickTimer->setSingleShot(true);
+  m_clickTimer->setInterval(dblClickDuration);
 
   connect(m_activeTimer, &QTimer::timeout, [this](){
     m_spotActive = false;
     emit spotActiveChanged(false);
   });
 
-  if (m_options.enableUInput) {
+  if (m_options.enableUInput)
+  {
     m_virtualDevice.reset(new VirtualDevice);
+    connect(m_clickTimer, &QTimer::timeout, [this](){
+      if (m_clicked)
+      {
+        //Send fake mouse click
+        m_virtualDevice->mouseLeftClick();
+        m_clicked = false;
+      }
+    });
   }
   else {
     logInfo(device) << tr("Virtual device initialization was skipped.");
@@ -310,9 +322,22 @@ Spotlight::ConnectionResult Spotlight::connectSpotlightDevice(const QString& dev
           break;
 
         case EV_KEY:
-          if (deviceGrabbed)
+          // Only Process left click events if the spotlight device is grabbed.
+          if (deviceGrabbed && ev.code == BTN_LEFT)
           {
-            // For now: pass event through to uinput (planned in v0.8: custom button/action mapping)
+            if (ev.value == 0) {// BTN_LEFT released
+              if (m_clickTimer->isActive()){
+                // Double Click Event
+                emit spotModeChanged();
+                m_clicked = false;
+              } else {
+                // Start the Click timer and if it times out then go for single click event
+                m_clickTimer->start();
+                m_clicked = true;
+              }
+            }
+          }
+          else {
             if (m_virtualDevice) m_virtualDevice->emitEvent(ev);
           }
           break;

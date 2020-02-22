@@ -585,3 +585,9 @@ QString Settings::StringProperty::typeToString(Type type)
   }
   return QString();
 }
+
+void Settings::changeSpotMode()
+{
+  // Mode changing logic
+  setZoomEnabled(!zoomEnabled());
+}
