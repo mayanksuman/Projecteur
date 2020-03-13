@@ -19,9 +19,6 @@ public:
 
   bool dialogActive() const { return m_active; }
 
-public slots:
-  void updateAvailableScreens(QList<QScreen*> screens);
-
 signals:
   void dialogActiveChanged(bool active);
   void testButtonClicked();
@@ -32,12 +29,21 @@ protected:
 private:
   void setDialogActive(bool active);
 
+  QWidget* createSettingsTabWidget(Settings* settings, Spotlight* spotlight);
+  QGroupBox* createShapeGroupBox(Settings* settings);
   QGroupBox* createSpotGroupBox(Settings* settings);
   QGroupBox* createDotGroupBox(Settings* settings);
-  QGroupBox* createScreenGroupBox(Settings* settings);
+  QGroupBox* createBorderGroupBox(Settings* settings);
+  QGroupBox* createCursorGroupBox(Settings* settings);
+  QGroupBox* createZoomGroupBox(Settings* settings);
   QWidget* createConnectedStateWidget(Spotlight* spotlight);
+#if HAS_Qt5_X11Extras
+  QWidget* createCompositorWarningWidget();
+#endif
+  QWidget* createLogTabWidget();
 
 private:
   bool m_active = false;
   QComboBox* m_screenCb = nullptr;
+  quint32 m_discardedLogCount = 0;
 };
