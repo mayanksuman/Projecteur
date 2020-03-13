@@ -64,6 +64,9 @@ ProjecteurApplication::ProjecteurApplication(int &argc, char **argv, const Optio
   connect(&*m_dialog, &PreferencesDialog::testButtonClicked, [this](){
     emit m_spotlight->spotActiveChanged(true);
   });
+  connect(&*m_dialog, &PreferencesDialog::testVibrationButtonClicked, [this](uint8_t strength){
+    m_spotlight->vibrateDevice(strength);
+  });
 
   const QString desktopEnv = m_linuxDesktop->type() == LinuxDesktop::Type::KDE ? "KDE" :
                               m_linuxDesktop->type() == LinuxDesktop::Type::Gnome ? "Gnome"

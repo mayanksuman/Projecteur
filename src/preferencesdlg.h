@@ -42,6 +42,7 @@ public:
 signals:
   void dialogActiveChanged(bool active);
   void testButtonClicked();
+  void testVibrationButtonClicked(uint8_t strength);
   void exitApplicationRequested();
 
 protected:
