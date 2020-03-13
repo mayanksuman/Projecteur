@@ -32,6 +32,7 @@ find_package(Qt5 QUIET COMPONENTS X11Extras)
 set(HAS_Qt5_X11Extras ${Qt5_FOUND})
 find_package(Qt5 QUIET COMPONENTS DBus)
 set(HAS_Qt5_DBus ${Qt5_FOUND})
+find_package(HIDAPI REQUIRED)
 
 # Qt 5.8 seems to have issues with the way Projecteur shows the full screen overlay window,
 # let's warn the user about it.
@@ -62,7 +63,7 @@ add_executable(projecteur
 target_include_directories(projecteur PRIVATE src)
 
 target_link_libraries(projecteur
-  PRIVATE Qt5::Core Qt5::Quick Qt5::Widgets
+  PRIVATE Qt5::Core Qt5::Quick Qt5::Widgets hidapi-hidraw
 )
 
 if(HAS_Qt5_X11Extras)
