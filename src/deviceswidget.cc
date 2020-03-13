@@ -102,11 +102,17 @@ QComboBox* DevicesWidget::createDeviceComboBox(Spotlight* spotlight)
 {
   const auto devicesCombo = new QComboBox(this);
   devicesCombo->setToolTip(tr("List of connected devices."));
-
-  for (const auto& dev : spotlight->connectedDevices()) {
-    const auto data = QVariant::fromValue(dev.id);
-    if (devicesCombo->findData(data) < 0) {
-      devicesCombo->addItem(descriptionString(dev.name, dev.id), data);
+  auto selDeviceId = spotlight->connectedDeviceId();
+  auto scanResult = spotlight->scanForDevices();
+  if (scanResult.devices.size() > 0){
+    for (const auto& dev : scanResult.devices) {
+      const auto data = QVariant::fromValue(dev.id);
+      if (devicesCombo->findData(data) < 0) {
+        devicesCombo->addItem(descriptionString(dev.name, dev.id), data);
+        if (spotlight->anySpotlightDeviceConnected() && dev.id == selDeviceId){
+          devicesCombo->setCurrentIndex(devicesCombo->findData(data));
+        }
+      }
     }
   }
 
@@ -120,11 +126,15 @@ QComboBox* DevicesWidget::createDeviceComboBox(Spotlight* spotlight)
   });
 
   connect(spotlight, &Spotlight::deviceConnected, this,
-  [devicesCombo](const Spotlight::DeviceId& id, const QString& name)
+  [devicesCombo, spotlight](const Spotlight::DeviceId& id, const QString& name)
   {
+    auto selDeviceId = spotlight->connectedDeviceId();
     const auto data = QVariant::fromValue(id);
     if (devicesCombo->findData(data) < 0) {
       devicesCombo->addItem(descriptionString(name, id), data);
+      if (spotlight->anySpotlightDeviceConnected() && id == selDeviceId){
+        devicesCombo->setCurrentIndex(devicesCombo->findData(data));
+      }
     }
   });
 

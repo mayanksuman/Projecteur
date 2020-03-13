@@ -766,10 +766,18 @@ QWidget* PreferencesDialog::createTimerTabWidget(Settings* settings)
   const auto vibrationIntensity = new QSlider(Qt::Horizontal);
   vibrationIntensity->setRange(32, 256);
   vibrationIntensity->setSingleStep(32);
+  vibrationIntensity->setValue(100);
   vibintensityHBox->setSpacing(20);
   vibintensityHBox->addWidget(new QLabel(tr("Vibration Strength")));
   vibintensityHBox->addWidget(vibrationIntensity);
   grid->addLayout(vibintensityHBox, 2, 0);
+
+  const auto testVibIntensityHBox = new QHBoxLayout;
+  const auto testVibrationBtn = new QPushButton(tr("&Test Vibration Strength"));
+  connect(testVibrationBtn, &QPushButton::clicked, this,
+          [this, vibrationIntensity](){emit testVibrationButtonClicked(vibrationIntensity->value());});
+  testVibIntensityHBox->addWidget(testVibrationBtn);
+  grid->addLayout(testVibIntensityHBox, 3, 0);
 
   const auto mainVBox = new QVBoxLayout(widget);
   mainVBox->addWidget(timerGroup);
