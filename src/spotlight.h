@@ -6,7 +6,10 @@
 
 #include <memory>
 #include <map>
+#include <vector>
 #include <set>
+#include <linux/input.h>
+#include <hidapi/hidapi.h>
 
 #include "enum-helper.h"
 
@@ -23,6 +26,23 @@ enum class DeviceFlag : uint32_t {
   RelativeEvents = 1 << 3,
 };
 ENUM(DeviceFlag, DeviceFlags)
+
+// -----------------------------------------------------------------------------------------------
+template<int Size, typename T = input_event>
+struct InputBuffer {
+  auto pos() const { return pos_; }
+  void reset() { pos_ = 0; }
+  auto data() { return data_.data(); }
+  auto size() const { return data_.size(); }
+  T& current() { return data_.at(pos_); }
+  InputBuffer& operator++() { ++pos_; return *this; }
+  T& operator[](size_t pos) { return data_[pos]; }
+  T& first() { return data_[0]; }
+private:
+  std::array<T, Size> data_;
+  size_t pos_ = 0;
+};
+
 
 /// Class to notify the application if the Logitech Spotlight and other supported devices
 /// are connected and sending mouse move events. Used to turn the applications spot on or off.
@@ -48,19 +68,36 @@ public:
 
   bool spotActive() const { return m_spotActive; }
   bool anySpotlightDeviceConnected() const;
+  enum class ConnectionMode : uint8_t { ReadOnly, WriteOnly, ReadWrite };
+  struct SubDeviceConnection {
+    SubDeviceConnection() = default;
+    SubDeviceConnection(const ConnectionMode mode)
+            : mode(mode){};
 
+    ConnectionMode mode;
+    bool grabbed = false;
+    InputBuffer<12> inputBuffer;
+    std::shared_ptr<InputMapper> im; // each device connection for a device shares the same input mapper
+    std::unique_ptr<QSocketNotifier> notifier;
+  };
+
+  enum class SubDeviceType : uint8_t { Event, Hidraw };
   struct SubDevice {
-    QString inputDeviceFile;
-    QString hidrawDeviceFile;
+    QString DeviceFile;
     QString phys;
+	SubDeviceType type;
+	DeviceFlags deviceFlags = DeviceFlags::NoFlags;
+    std::shared_ptr<SubDeviceConnection> connection;
     bool hasRelativeEvents = false;
-    bool inputDeviceReadable = false;
-    bool inputDeviceWritable = false;
-    bool hidrawDeviceReadable = false;
-    bool hidrawDeviceWritable = false;
+    bool DeviceReadable = false;
+    bool DeviceWritable = false;
   };
 
   struct DeviceId {
+    DeviceId() = default;
+    DeviceId(const uint16_t vid, const uint16_t pid, QString phys)
+          : vendorId(vid), productId(pid), phys(phys){};
+
     uint16_t vendorId = 0;
     uint16_t productId = 0;
     QString phys; // should be sufficient to differentiate between two devices of the same type
@@ -80,12 +117,15 @@ public:
   };
 
   struct Device {
+  public:
     enum class BusType : uint16_t { Unknown, Usb, Bluetooth };
     QString name;
     QString userName;
     DeviceId id;
     BusType busType = BusType::Unknown;
     QList<SubDevice> subDevices;
+    std::shared_ptr<InputMapper> eventIM; // Sub-devices shares this input mapper
+    hid_device* hidrwNode;
   };
 
   struct ScanResult {
@@ -95,16 +135,13 @@ public:
     QStringList errorMessages;
   };
 
-  struct ConnectedDeviceInfo {
-    DeviceId id;
-    QString name;
-  };
-
-  uint32_t connectedDeviceCount() const;
-  QList<ConnectedDeviceInfo> connectedDevices() const;
+  DeviceId connectedDeviceId() const;
 
   /// scan for supported devices and check if they are accessible
   static ScanResult scanForDevices(const QList<SupportedDevice>& additionalDevices = {});
+  int vibrateDevice(uint8_t strength);
+  int sendDatatoDevice(uint8_t data[], int data_len);
+  Device* m_device = nullptr;
 
 signals:
   void error(const QString& errMsg);
@@ -119,37 +156,19 @@ private:
   enum class ConnectionResult { CouldNotOpen, NotASpotlightDevice, Connected };
   ConnectionResult connectSpotlightDevice(const QString& devicePath, bool verbose = false);
 
-  enum class ConnectionType : uint8_t { Event, Hidraw };
-  enum class ConnectionMode : uint8_t { ReadOnly, WriteOnly, ReadWrite };
-
-  struct ConnectionInfo {
-    ConnectionInfo() = default;
-    ConnectionInfo(const QString& path, ConnectionType type, ConnectionMode mode)
-      : type(type), mode(mode), devicePath(path) {}
-
-    ConnectionType type;
-    ConnectionMode mode;
-    bool grabbed = false;
-    DeviceFlags deviceFlags = DeviceFlags::NoFlags;
-    QString devicePath;
-  };
-
-  struct DeviceConnection;
-  struct ConnectionDetails;
-  using DevicePath = QString;
-  using ConnectionMap = std::map<DevicePath, std::shared_ptr<DeviceConnection>>;
-
-  std::shared_ptr<DeviceConnection> openEventDevice(const QString& devicePath, const Device& dev);
-  bool addInputEventHandler(std::shared_ptr<DeviceConnection> connection);
+  std::shared_ptr<SubDeviceConnection> openEventSubDeviceConnection(SubDevice& devicePath);
+  bool addInputEventHandler(SubDevice& subdev);
 
   bool setupDevEventInotify();
-  int connectDevices();
-  void removeDeviceConnection(const QString& devicePath);
-  void onDeviceDataAvailable(int fd, DeviceConnection& connection);
-  void vibrateDevice();
+  int connectDevice(DeviceId id = DeviceId(0, 0, ""));
+  int connectSubDevices();
+  int ConnectEventSubDevices();
+  int ConnectHidrawSubDevices();
+  void removeDeviceConnection();
+  void removeSubDeviceConnection(QString DeviceFile);
+  void onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& connection, const SubDevice& dev);
 
   const Options m_options;
-  std::map<DeviceId, std::unique_ptr<ConnectionDetails>> m_deviceConnections;
 
   QTimer* m_activeTimer = nullptr;
   QTimer* m_connectionTimer = nullptr;
