@@ -22,9 +22,11 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QQmlPropertyMap>
+#include <QRadioButton>
 #include <QSpinBox>
 #include <QStyle>
 #include <QTabWidget>
+#include <QTimeEdit>
 #include <QTimer>
 
 #if HAS_Qt5_X11Extras
@@ -97,8 +99,11 @@ PreferencesDialog::PreferencesDialog(Settings* settings, Spotlight* spotlight,
   settingsWidget->setDisabled(settings->overlayDisabled());
 
   const auto tabWidget = new QTabWidget(this);
+
   tabWidget->addTab(settingsWidget, tr("Spotlight"));
   tabWidget->addTab(new DevicesWidget(settings, spotlight, this), tr("Devices"));
+  tabWidget->addTab(createTimerTabWidget(settings), tr("Timer"));
+
   tabWidget->addTab(createLogTabWidget(), tr("Log"));
 
   const auto btnHBox = new QHBoxLayout;
@@ -706,6 +711,7 @@ QWidget* PreferencesDialog::createLogTabWidget()
   return widget;
 }
 
+
 // -------------------------------------------------------------------------------------------------
 void PreferencesDialog::setMode(Mode dialogMode)
 {
@@ -738,6 +744,53 @@ void PreferencesDialog::setDialogMode(Mode dialogMode)
 }
 
 // -------------------------------------------------------------------------------------------------
+QWidget* PreferencesDialog::createTimerTabWidget(Settings* settings)
+{
+  const auto widget = new QWidget(this);
+
+  const auto timerGroup = new QGroupBox(tr("Enable Vibration Alert"), this);
+  timerGroup->setCheckable(true);
+  timerGroup->setChecked(settings->showCenterDot());
+  const auto grid = new QGridLayout(timerGroup);
+
+  const auto recurringTimer =  new QRadioButton(tr("Every "));
+  const auto intervalTimer = new QSpinBox(this);
+  intervalTimer->setMinimum(1);
+  const auto numTimer = new QSpinBox(this);
+  numTimer->setMinimum(1);
+
+  const auto rectimerHBox = new QHBoxLayout;
+  rectimerHBox->setSpacing(0);
+  rectimerHBox->addWidget(recurringTimer);
+  rectimerHBox->addWidget(intervalTimer);
+  rectimerHBox->addWidget(new QLabel(tr(" minute for ")));
+  rectimerHBox->addWidget(numTimer);
+  rectimerHBox->addWidget(new QLabel(tr("times.")));
+  grid->addLayout(rectimerHBox, 0, 0);
+
+  const auto fixedtimerHBox = new QHBoxLayout;
+  const auto fixedTimer = new QRadioButton(tr("At "));
+  const auto timeAlert = new QTimeEdit();
+  fixedtimerHBox->addWidget(fixedTimer);
+  fixedtimerHBox->addWidget(timeAlert);
+  fixedtimerHBox->setSpacing(0);
+  grid->addLayout(fixedtimerHBox, 1, 0);
+
+  const auto vibintensityHBox = new QHBoxLayout;
+  const auto vibrationIntensity = new QSlider(Qt::Horizontal);
+  vibrationIntensity->setRange(32, 256);
+  vibrationIntensity->setSingleStep(32);
+  vibintensityHBox->setSpacing(20);
+  vibintensityHBox->addWidget(new QLabel(tr("Vibration Strength")));
+  vibintensityHBox->addWidget(vibrationIntensity);
+  grid->addLayout(vibintensityHBox, 2, 0);
+
+  const auto mainVBox = new QVBoxLayout(widget);
+  mainVBox->addWidget(timerGroup);
+  mainVBox->addStretch(1);
+  return widget;
+}
+
 void PreferencesDialog::setDialogActive(bool active)
 {
   if (active == m_active)

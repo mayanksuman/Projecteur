@@ -146,6 +146,7 @@ private:
   int connectDevices();
   void removeDeviceConnection(const QString& devicePath);
   void onDeviceDataAvailable(int fd, DeviceConnection& connection);
+  void vibrateDevice();
 
   const Options m_options;
   std::map<DeviceId, std::unique_ptr<ConnectionDetails>> m_deviceConnections;

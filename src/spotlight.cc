@@ -773,3 +773,9 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
 
   return result;
 }
+
+void Spotlight::vibrateDevice(){
+    // send vibration packet to the device
+
+    return;
+}
