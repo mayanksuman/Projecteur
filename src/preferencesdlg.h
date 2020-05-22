@@ -65,7 +65,7 @@ private:
   QWidget* createCompositorWarningWidget();
 #endif
   QWidget* createLogTabWidget();
-  QWidget* createTimerTabWidget(Settings* settings);
+  QWidget* createTimerTabWidget();
 
 private:
   QPushButton* m_closeMinimizeBtn = nullptr;

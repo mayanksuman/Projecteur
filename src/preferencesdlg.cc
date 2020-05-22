@@ -102,7 +102,7 @@ PreferencesDialog::PreferencesDialog(Settings* settings, Spotlight* spotlight,
 
   tabWidget->addTab(settingsWidget, tr("Spotlight"));
   tabWidget->addTab(new DevicesWidget(settings, spotlight, this), tr("Devices"));
-  tabWidget->addTab(createTimerTabWidget(settings), tr("Timer"));
+  tabWidget->addTab(createTimerTabWidget(), tr("Timer"));
 
   tabWidget->addTab(createLogTabWidget(), tr("Log"));
 
@@ -730,20 +730,50 @@ void PreferencesDialog::setDialogMode(Mode dialogMode)
 }
 
 // -------------------------------------------------------------------------------------------------
-QWidget* PreferencesDialog::createTimerTabWidget(Settings* settings)
+QWidget* PreferencesDialog::createTimerTabWidget()
 {
   const auto widget = new QWidget(this);
 
-  const auto timerGroup = new QGroupBox(tr("Enable Vibration Alert"), this);
+  const auto vibGroup = new QGroupBox(tr("Vibration Setting"), this);
+  const auto vibgrid = new QGridLayout(vibGroup);
+
+  const auto vibintensityHBox = new QHBoxLayout;
+  const auto vibrationIntensity = new QSlider(Qt::Horizontal);
+  vibrationIntensity->setRange(32, 256);
+  vibrationIntensity->setSingleStep(32);
+  vibrationIntensity->setValue(100);
+  vibintensityHBox->setSpacing(20);
+  vibintensityHBox->addWidget(new QLabel(tr("Vibration Strength")));
+  vibintensityHBox->addWidget(vibrationIntensity);
+  vibgrid->addLayout(vibintensityHBox, 0, 0);
+
+  const auto testVibIntensityHBox = new QHBoxLayout;
+  const auto testVibrationBtn = new QPushButton(tr("&Test Vibration Strength"));
+  connect(testVibrationBtn, &QPushButton::clicked, this,
+          [this, vibrationIntensity](){emit testVibrationButtonClicked(vibrationIntensity->value());});
+  testVibIntensityHBox->addStretch(1);
+  testVibIntensityHBox->addWidget(testVibrationBtn);
+  testVibIntensityHBox->addStretch(1);
+  vibgrid->addLayout(testVibIntensityHBox, 1, 0);
+
+  const auto spacer = new QVBoxLayout;
+  spacer->addSpacing(5);
+  vibgrid->addLayout(spacer, 2, 0);
+  const auto VibInfoHBox = new QHBoxLayout;
+  const auto vibInfo = new QLabel("Note: If device do not vibrate, either press any button on device or change vibration intensity.");
+  VibInfoHBox->addWidget(vibInfo);
+  vibgrid->addLayout(VibInfoHBox, 3, 0);
+
+  const auto timerGroup = new QGroupBox(tr("Timer"), this);
   timerGroup->setCheckable(true);
-  timerGroup->setChecked(settings->showCenterDot());
+  timerGroup->setChecked(false);
   const auto grid = new QGridLayout(timerGroup);
 
   const auto recurringTimer =  new QRadioButton(tr("Every "));
   const auto intervalTimer = new QSpinBox(this);
-  intervalTimer->setMinimum(1);
+  intervalTimer->setRange(1, 60);
   const auto numTimer = new QSpinBox(this);
-  numTimer->setMinimum(1);
+  numTimer->setRange(1, 10);
 
   const auto rectimerHBox = new QHBoxLayout;
   rectimerHBox->setSpacing(0);
@@ -757,30 +787,72 @@ QWidget* PreferencesDialog::createTimerTabWidget(Settings* settings)
   const auto fixedtimerHBox = new QHBoxLayout;
   const auto fixedTimer = new QRadioButton(tr("At "));
   const auto timeAlert = new QTimeEdit();
+  auto curTime = QTime::currentTime();
+  timeAlert->setMinimumTime(QTime(curTime.hour(),curTime.minute()+10)); // Set 10 minute after current time as minimum time
+  fixedtimerHBox->setSpacing(0);
   fixedtimerHBox->addWidget(fixedTimer);
   fixedtimerHBox->addWidget(timeAlert);
-  fixedtimerHBox->setSpacing(0);
   grid->addLayout(fixedtimerHBox, 1, 0);
 
-  const auto vibintensityHBox = new QHBoxLayout;
-  const auto vibrationIntensity = new QSlider(Qt::Horizontal);
-  vibrationIntensity->setRange(32, 256);
-  vibrationIntensity->setSingleStep(32);
-  vibrationIntensity->setValue(100);
-  vibintensityHBox->setSpacing(20);
-  vibintensityHBox->addWidget(new QLabel(tr("Vibration Strength")));
-  vibintensityHBox->addWidget(vibrationIntensity);
-  grid->addLayout(vibintensityHBox, 2, 0);
+  connect(timerGroup, &QGroupBox::clicked, this, [recurringTimer, timerGroup](){recurringTimer->setChecked(timerGroup->isChecked());});
+  connect(recurringTimer, &QRadioButton::clicked, this, [recurringTimer, intervalTimer, numTimer](){
+    intervalTimer->setEnabled(recurringTimer->isChecked());
+    numTimer->setEnabled(recurringTimer->isChecked());
+  });
 
-  const auto testVibIntensityHBox = new QHBoxLayout;
-  const auto testVibrationBtn = new QPushButton(tr("&Test Vibration Strength"));
-  connect(testVibrationBtn, &QPushButton::clicked, this,
-          [this, vibrationIntensity](){emit testVibrationButtonClicked(vibrationIntensity->value());});
-  testVibIntensityHBox->addWidget(testVibrationBtn);
-  grid->addLayout(testVibIntensityHBox, 3, 0);
+  const auto timerBtnSpacer = new QVBoxLayout;
+  timerBtnSpacer->addSpacing(5);
+  grid->addLayout(timerBtnSpacer, 2, 0);
+
+  const auto startTimerHBox = new QHBoxLayout;
+  const auto startTimerBtn = new QPushButton(tr("&Start Timer"));
+  startTimerHBox->addStretch(1);
+  startTimerHBox->addWidget(startTimerBtn);
+  startTimerHBox->addStretch(1);
+  grid->addLayout(startTimerHBox, 3, 0);
+
+  const auto timerActiveInfo = new QLabel(tr("Timer is active. Wait ..."));
+  timerActiveInfo->setVisible(!timerGroup->isEnabled());
+
+  connect(startTimerBtn, &QPushButton::clicked, this,
+          [this, timerGroup, timerActiveInfo, vibrationIntensity, recurringTimer, intervalTimer, numTimer, fixedTimer, timeAlert](){
+    int vibIntensity = vibrationIntensity->value();
+    timerGroup->setEnabled(false);
+    timerActiveInfo->setVisible(!timerGroup->isEnabled());
+    if (recurringTimer->isChecked()){
+      int i;
+      for(i=1;i<=numTimer->value();i++)
+        QTimer::singleShot(intervalTimer->value()*60*1000*i,
+                             [this, vibIntensity](){emit testVibrationButtonClicked(vibIntensity);});
+      QTimer::singleShot(intervalTimer->value()*60*1000*numTimer->value(),
+                           [timerGroup, timerActiveInfo](){
+        timerGroup->setEnabled(true);
+        timerActiveInfo->setVisible(!timerGroup->isEnabled());
+      });
+    }
+    if (fixedTimer->isChecked()){
+      auto tAlert = timeAlert->time();
+      auto curTime = QTime::currentTime();
+      if (tAlert > curTime) {
+        QTimer::singleShot(curTime.msecsTo(tAlert),
+                             [this, vibIntensity, timerGroup, timerActiveInfo](){
+          emit testVibrationButtonClicked(vibIntensity);
+          timerGroup->setEnabled(true);
+          timerActiveInfo->setVisible(!timerGroup->isEnabled());
+        });
+      } else {
+        logInfo(preferences) << tr("Timer not set.");
+      }
+    }
+      emit testVibrationButtonClicked(vibIntensity);
+  });
 
   const auto mainVBox = new QVBoxLayout(widget);
+  mainVBox->addWidget(vibGroup);
+  mainVBox->addSpacing(25);
   mainVBox->addWidget(timerGroup);
+  mainVBox->addSpacing(5);
+  mainVBox->addWidget(timerActiveInfo);
   mainVBox->addStretch(1);
   return widget;
 }
@@ -813,4 +885,3 @@ void PreferencesDialog::closeEvent(QCloseEvent*)
     emit exitApplicationRequested();
   }
 }
-
