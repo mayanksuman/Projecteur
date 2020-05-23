@@ -226,7 +226,10 @@ Spotlight::~Spotlight() = default;
 // -------------------------------------------------------------------------------------------------
 bool Spotlight::anySpotlightDeviceConnected() const
 {
-  return (m_device != nullptr);
+  if (m_device)
+    return true;
+  else
+    return false;
 }
 
 
@@ -242,19 +245,18 @@ int Spotlight::connectDevice(DeviceId id)
     return -1;
   } else {
     if (id.vendorId != 0 && id.productId != 0){
-      for (auto& dev : scanResult.devices)
+      for (auto dev : scanResult.devices)
       {
         if (dev.id == id){
-          m_device = &dev;
+          m_device = std::make_shared<Device>(dev);
           break;
         }
       }
     }
-    if (m_device == nullptr)
-      m_device = &scanResult.devices.first();
+    if (!m_device)
+      m_device = std::make_shared<Device>(scanResult.devices.first());
 
     m_device->eventIM = std::make_shared<InputMapper>(m_virtualDevice);
-    m_device->name = m_device->userName.size() ? m_device->userName : m_device->name;
 
     if (connectSubDevices() > 0){
       logInfo(device) << tr("Connected device: %1 (%2:%3)")
@@ -271,7 +273,7 @@ int Spotlight::connectDevice(DeviceId id)
 
 // -------------------------------------------------------------------------------------------------
 int Spotlight::connectSubDevices(){
-  if (m_device == nullptr || m_device->subDevices.size() == 0)
+  if (!m_device || m_device->subDevices.size() == 0)
     return -1;
 
   int connectedEventSubDevice = ConnectEventSubDevices();
@@ -451,12 +453,12 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
 void Spotlight::removeDeviceConnection()
 {
   hid_close(m_device->hidrwNode);
-  m_device = nullptr;
+  m_device = std::make_unique<Device>();
 }
 
 void Spotlight::removeSubDeviceConnection(QString DeviceFile)
 {
-  if (m_device == nullptr || m_device->subDevices.size() == 0)
+  if (!m_device || m_device->subDevices.size() == 0)
     return;
   QList<SubDevice>::iterator it = m_device->subDevices.begin();
   while (it != m_device->subDevices.end()) {
