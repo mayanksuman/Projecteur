@@ -293,14 +293,20 @@ int Spotlight::ConnectHidrawSubDevices()
         && subdev.DeviceReadable
         && subdev.DeviceFile.size() > 0){
       subdev.connection = openHidrawSubDeviceConnection(subdev);
-      connectedHidrawSubDevice++;
       if (subdev.connection
           && subdev.connection->notifier
           && subdev.connection->notifier->isEnabled()
           && subdev.connection->fd
           && addInputHidrawHandler(subdev)){
+        connectedHidrawSubDevice++;
         m_device->hidrwNode = subdev.connection->fd;
         break; // Only one readwrite hidraw device is enough.
+      } else {
+        logError(device) << tr("Connection failed for hidraw sub-device: %1 (%2:%3) %4")
+                            .arg(m_device->name)
+                            .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                            .arg(m_device->id.productId, 4, 16, QChar('0'))
+                            .arg(subdev.DeviceFile);
       }
     }
   }
