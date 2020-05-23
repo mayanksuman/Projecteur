@@ -117,7 +117,6 @@ public:
   };
 
   struct Device {
-  public:
     enum class BusType : uint16_t { Unknown, Usb, Bluetooth };
     QString name;
     QString userName;
@@ -141,7 +140,6 @@ public:
   static ScanResult scanForDevices(const QList<SupportedDevice>& additionalDevices = {});
   int vibrateDevice(uint8_t strength);
   int sendDatatoDevice(uint8_t data[], int data_len);
-  Device* m_device = nullptr;
 
 signals:
   void error(const QString& errMsg);
@@ -173,6 +171,7 @@ private:
   QTimer* m_activeTimer = nullptr;
   QTimer* m_connectionTimer = nullptr;
   bool m_spotActive = false;
+  std::shared_ptr<Device> m_device;
   std::shared_ptr<VirtualDevice> m_virtualDevice;
 };
 
