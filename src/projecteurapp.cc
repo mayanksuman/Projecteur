@@ -70,6 +70,10 @@ ProjecteurApplication::ProjecteurApplication(int &argc, char **argv, const Optio
   connect(&*m_spotlight, &Spotlight::connectedDeviceSupportVibration, [this](bool show){
     m_dialog->showTimerTab(show);
   });
+  connect(&*m_spotlight, &Spotlight::deviceDisconnected, [this]
+    (const Spotlight::DeviceId&, const QString&){
+    m_dialog->showTimerTab(false);
+  });
 
   const QString desktopEnv = m_linuxDesktop->type() == LinuxDesktop::Type::KDE ? "KDE" :
                               m_linuxDesktop->type() == LinuxDesktop::Type::Gnome ? "Gnome"
