@@ -265,12 +265,13 @@ int Spotlight::connectDevice(DeviceId id)
 
     if (connectSubDevices()){
       QTimer::singleShot(0, this,
-      [this, id = m_device->id, devName = m_device->name, anyConnectedBefore](){
+      [this, id = m_device->id,
+      devName = m_device->userName.isEmpty()?m_device->name:m_device->userName, anyConnectedBefore](){
         logInfo(device) << tr("Connected device: %1 (%2:%3)")
-                           .arg(m_device->name)
+                           .arg(devName)
                            .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                            .arg(m_device->id.productId, 4, 16, QChar('0'));
-        emit deviceConnected(m_device->id, m_device->name);
+        emit deviceConnected(m_device->id, devName);
         if (!anyConnectedBefore) emit anySpotlightDeviceConnectedChanged(true);
         if (m_device->hidrwNode)
           emit connectedDeviceSupportVibration(true);
@@ -315,8 +316,9 @@ int Spotlight::ConnectHidrawSubDevices()
         m_device->hidrwNode = subdev.connection->fd;
         break; // Only one readwrite hidraw device is enough.
       } else {
+        auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
         logError(device) << tr("Connection failed for hidraw sub-device: %1 (%2:%3) %4")
-                            .arg(m_device->name)
+                            .arg(devName)
                             .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                             .arg(m_device->id.productId, 4, 16, QChar('0'))
                             .arg(subdev.DeviceFile);
@@ -331,6 +333,7 @@ int Spotlight::ConnectHidrawSubDevices()
 int Spotlight::ConnectEventSubDevices()
 {
   int connectedEventSubDevices = 0;
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
   for (auto& subdev : m_device->subDevices)
   {
     if (subdev.type == SubDeviceType::Event
@@ -354,15 +357,15 @@ int Spotlight::ConnectEventSubDevices()
           connectedEventSubDevices++;
 
           logDebug(device) << tr("Connected event sub-device: %1 (%2:%3) %4")
-                              .arg(m_device->name)
+                              .arg(devName)
                               .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                               .arg(m_device->id.productId, 4, 16, QChar('0'))
                               .arg(subdev.DeviceFile);
-          emit subDeviceConnected(m_device->id, m_device->name, subdev.DeviceFile);
+          emit subDeviceConnected(m_device->id, devName, subdev.DeviceFile);
         }else
         {
           logError(device) << tr("Connection failed for event sub-device: %1 (%2:%3) %4")
-                              .arg(m_device->name)
+                              .arg(devName)
                               .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                               .arg(m_device->id.productId, 4, 16, QChar('0'))
                               .arg(subdev.DeviceFile);
@@ -484,11 +487,14 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
 void Spotlight::removeDeviceConnection()
 {
   if (!m_device) return;
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
   logInfo(device) << tr("Disconnected device: %1 (%2:%3)")
-                     .arg(m_device->name)
+                     .arg(devName)
                      .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                      .arg(m_device->id.productId, 4, 16, QChar('0'));
-  emit deviceDisconnected(m_device->id, m_device->name);
+  emit deviceDisconnected(m_device->id, devName);
+  for(auto& subdev: m_device->subDevices)
+    removeSubDeviceConnection(subdev.DeviceFile);
   m_device = nullptr;
 }
 
@@ -496,11 +502,20 @@ void Spotlight::removeDeviceConnection()
 void Spotlight::removeSubDeviceConnection(QString DeviceFile)
 {
   if (!m_device || m_device->subDevices.size() == 0) return;
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
   QList<SubDevice>::iterator it = m_device->subDevices.begin();
   while (it != m_device->subDevices.end()) {
     if (it->DeviceFile == DeviceFile){
-      emit subDeviceDisconnected(m_device->id, m_device->name, it->DeviceFile);
-      logDebug(device) << tr("Sub device %1 removed.").arg(it->DeviceFile);
+      emit subDeviceDisconnected(m_device->id, devName, it->DeviceFile);
+      logDebug(device) << tr("Disconnected sub-device: %1 (%2:%3) %4")
+                          .arg(devName)
+                          .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                          .arg(m_device->id.productId, 4, 16, QChar('0'))
+                          .arg(it->DeviceFile);
+      it->connection->notifier->setEnabled(false);
+      if (it->type==SubDeviceType::Event && it->connection->grabbed)
+        ioctl(it->connection->fd, EVIOCGRAB, 0);
+      ::close(it->connection->fd);
       it = m_device->subDevices.erase(it);
       break;
     }
