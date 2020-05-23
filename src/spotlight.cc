@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <sys/inotify.h>
 #include <sys/ioctl.h>
+#include <linux/hidraw.h>
 #include <unistd.h>
 
 LOGGING_CATEGORY(device, "device")
@@ -198,11 +199,6 @@ Spotlight::Spotlight(QObject* parent, Options options)
     logInfo(device) << tr("Virtual device initialization was skipped.");
   }
 
-  //Initialize libhidapi
-  int res = hid_init();
-  if (res < 0)
-    logError(device) << tr("hidapi library intialization failed.");
-
   m_connectionTimer->setSingleShot(true);
   // From detecting a change from inotify, the device needs some time to be ready for open
   // TODO: This interval seems to work, but it is arbitrary - there should be a better way.
@@ -292,22 +288,18 @@ int Spotlight::ConnectHidrawSubDevices()
   int connectedHidrawSubDevice = 0;
   for (auto& subdev : m_device->subDevices)
   {
-    const bool isNonBlocking = !!(subdev.deviceFlags & DeviceFlag::NonBlocking);
     if (subdev.type == SubDeviceType::Hidraw
         && subdev.DeviceWritable
         && subdev.DeviceReadable
         && subdev.DeviceFile.size() > 0){
-      auto handle = hid_open_path(subdev.DeviceFile.toLocal8Bit().constData());
-      if (!handle){
-        logError(device) << tr("Failed to open hidraw device at %1.").arg(subdev.DeviceFile);
-        hid_close(handle);
-        removeSubDeviceConnection(subdev.DeviceFile);
-        continue;
-      }else {
-        if (isNonBlocking) hid_set_nonblocking(handle, 1);
-        connectedHidrawSubDevice++;
-        m_device->hidrwNode = handle;
-        subdev.connection = std::make_shared<SubDeviceConnection>(ConnectionMode::ReadWrite);
+      subdev.connection = openHidrawSubDeviceConnection(subdev);
+      connectedHidrawSubDevice++;
+      if (subdev.connection
+          && subdev.connection->notifier
+          && subdev.connection->notifier->isEnabled()
+          && subdev.connection->fd
+          && addInputHidrawHandler(subdev)){
+        m_device->hidrwNode = subdev.connection->fd;
         break; // Only one readwrite hidraw device is enough.
       }
     }
@@ -362,6 +354,53 @@ int Spotlight::ConnectEventSubDevices()
   return connectedEventSubDevices;
 }
 
+// -------------------------------------------------------------------------------------------------
+std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openHidrawSubDeviceConnection(SubDevice& subdev)
+{
+  auto devicePath = subdev.DeviceFile;
+  const int hrfd = ::open(devicePath.toLocal8Bit().constData(), O_RDWR, 0);
+
+  if (hrfd < 0) {
+    logDebug(device) << tr("Opening input event device failed:") << devicePath;
+    return std::make_shared<SubDeviceConnection>();
+  }
+
+  struct hidraw_devinfo id{};
+  ioctl(hrfd, HIDIOCGRAWINFO, &id);
+
+  // Check against given device id
+  if ( id.vendor != m_device->id.vendorId || (uint16_t)id.product != m_device->id.productId) // Kernel provided int16_t resulting in overflow
+  {
+    ::close(hrfd);
+    logDebug(device) << tr("Device id mismatch: %1 (%2:%3)")
+                        .arg(devicePath)
+                        .arg(id.vendor, 4, 16, QChar('0'))
+                        .arg(id.product, 4, 16, QChar('0'));
+    return std::make_shared<SubDeviceConnection>();
+  }
+
+  auto connection = std::make_shared<SubDeviceConnection> (ConnectionMode::ReadOnly);
+  connection->grabbed = false;
+
+  fcntl(hrfd, F_SETFL, fcntl(hrfd, F_GETFL, 0) | O_NONBLOCK);
+  if ((fcntl(hrfd, F_GETFL, 0) & O_NONBLOCK) == O_NONBLOCK) {
+    subdev.deviceFlags |= DeviceFlag::NonBlocking;
+  }
+  connection->fd = hrfd;
+
+  // Create socket notifier
+  connection->notifier = std::make_unique<QSocketNotifier>(hrfd, QSocketNotifier::Read);
+  QSocketNotifier* const notifier = connection->notifier.get();
+  // Auto clean up and close descriptor on destruction of notifier
+  connect(notifier, &QSocketNotifier::destroyed, [grabbed = connection->grabbed, notifier]() {
+    if (grabbed) {
+      ioctl(static_cast<int>(notifier->socket()), EVIOCGRAB, 0);
+    }
+    ::close(static_cast<int>(notifier->socket()));
+  });
+
+  return connection;
+}
 
 // -------------------------------------------------------------------------------------------------
 std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceConnection(SubDevice& subdev)
@@ -392,7 +431,7 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
   if (ioctl(evfd, EVIOCGBIT(0, sizeof(bitmask)), &bitmask) < 0)
   {
     ::close(evfd);
-    logWarn(device) << tr("Cannot get device properties: %1 (%2:%3)")
+    logInfo(device) << tr("Cannot get device properties: %1 (%2:%3)")
                         .arg(devicePath)
                         .arg(id.vendor, 4, 16, QChar('0'))
                         .arg(id.product, 4, 16, QChar('0'));
@@ -433,17 +472,18 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
   if ((fcntl(evfd, F_GETFL, 0) & O_NONBLOCK) == O_NONBLOCK) {
     subdev.deviceFlags |= DeviceFlag::NonBlocking;
   }
+  connection->fd = evfd;
 
   // Create socket notifier
-    connection->notifier = std::make_unique<QSocketNotifier>(evfd, QSocketNotifier::Read);
-    QSocketNotifier* const notifier = connection->notifier.get();
-    // Auto clean up and close descriptor on destruction of notifier
-    connect(notifier, &QSocketNotifier::destroyed, [grabbed = connection->grabbed, notifier]() {
-      if (grabbed) {
-        ioctl(static_cast<int>(notifier->socket()), EVIOCGRAB, 0);
-      }
+  connection->notifier = std::make_unique<QSocketNotifier>(evfd, QSocketNotifier::Read);
+  QSocketNotifier* const notifier = connection->notifier.get();
+  // Auto clean up and close descriptor on destruction of notifier
+  connect(notifier, &QSocketNotifier::destroyed, [grabbed = connection->grabbed, notifier]() {
+    if (grabbed) {
+      ioctl(static_cast<int>(notifier->socket()), EVIOCGRAB, 0);
+    }
       ::close(static_cast<int>(notifier->socket()));
-    });
+  });
 
   return connection;
 }
@@ -452,10 +492,10 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
 // -------------------------------------------------------------------------------------------------
 void Spotlight::removeDeviceConnection()
 {
-  hid_close(m_device->hidrwNode);
   m_device = std::make_unique<Device>();
 }
 
+// -------------------------------------------------------------------------------------------------
 void Spotlight::removeSubDeviceConnection(QString DeviceFile)
 {
   if (!m_device || m_device->subDevices.size() == 0)
@@ -543,6 +583,25 @@ bool Spotlight::addInputEventHandler(SubDevice& subdev)
   [this, connection, subdev](int fd) {
     onEventSubDeviceDataAvailable(fd, *connection, subdev);
   });
+
+  return true;
+}
+
+
+// -------------------------------------------------------------------------------------------------
+bool Spotlight::addInputHidrawHandler(SubDevice& subdev)
+{
+  auto connection = subdev.connection;
+  if (!connection ||subdev.type != SubDeviceType::Hidraw || !connection->notifier || !connection->notifier->isEnabled()) {
+    return false;
+  }
+
+  QSocketNotifier* const notifier = connection->notifier.get();
+  connect(notifier, &QSocketNotifier::activated, this, [](){}); // notifier do not do anything for now.
+                                                                // According to HID++ 1.0 documentation: No input come on hidraw device,
+                                                                // so it should not be mapped to input device.
+                                                                // https://drive.google.com/folderview?id=0BxbRzx7vEV7eWmgwazJ3NUFfQ28&usp=sharing
+                                                                // In future, new interface to process these command will be needed.
 
   return true;
 }
@@ -756,20 +815,23 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
   return result;
 }
 
+// -------------------------------------------------------------------------------------------------
 int Spotlight::vibrateDevice(uint8_t strength){
   // send vibration packet to the device
   strength = (strength < 64)? 64 : strength;
 
   uint8_t vibration_data[] = {0x10, 0x01, 0x09, 0x11, 0x03, 0xe8, strength};
   return sendDatatoDevice(vibration_data, 7);
-        //res = hid_exit();
 }
 
+// -------------------------------------------------------------------------------------------------
 int Spotlight::sendDatatoDevice(uint8_t data[], int data_len){
   if (!anySpotlightDeviceConnected()) return -1;
   int res;
   if (m_device->hidrwNode){
-    res = hid_write(m_device->hidrwNode, data, data_len);
+    res = ::write(m_device->hidrwNode, (char*)data, data_len);
+    if (res < 0)
+      logError(device) << tr("Failed to write on the hidraw device.");
     return res;
   }
   else return -1;

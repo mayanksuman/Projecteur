@@ -9,7 +9,6 @@
 #include <vector>
 #include <set>
 #include <linux/input.h>
-#include <hidapi/hidapi.h>
 
 #include "enum-helper.h"
 
@@ -75,6 +74,7 @@ public:
             : mode(mode){};
 
     ConnectionMode mode;
+    int fd = 0;
     bool grabbed = false;
     InputBuffer<12> inputBuffer;
     std::shared_ptr<InputMapper> im; // each device connection for a device shares the same input mapper
@@ -124,7 +124,7 @@ public:
     BusType busType = BusType::Unknown;
     QList<SubDevice> subDevices;
     std::shared_ptr<InputMapper> eventIM; // Sub-devices shares this input mapper
-    hid_device* hidrwNode;
+    int hidrwNode;
   };
 
   struct ScanResult {
@@ -154,8 +154,10 @@ private:
   enum class ConnectionResult { CouldNotOpen, NotASpotlightDevice, Connected };
   ConnectionResult connectSpotlightDevice(const QString& devicePath, bool verbose = false);
 
-  std::shared_ptr<SubDeviceConnection> openEventSubDeviceConnection(SubDevice& devicePath);
-  bool addInputEventHandler(SubDevice& subdev);
+  std::shared_ptr<SubDeviceConnection> openEventSubDeviceConnection(SubDevice&);
+  std::shared_ptr<SubDeviceConnection> openHidrawSubDeviceConnection(SubDevice&);
+  bool addInputEventHandler(SubDevice&);
+  bool addInputHidrawHandler(SubDevice&);
 
   bool setupDevEventInotify();
   int connectDevice(DeviceId id = DeviceId(0, 0, ""));

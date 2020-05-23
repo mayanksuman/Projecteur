@@ -763,8 +763,6 @@ QWidget* PreferencesDialog::createTimerTabWidget()
 
   const auto testVibIntensityHBox = new QHBoxLayout;
   const auto testVibrationBtn = new QPushButton(tr("&Test Vibration Strength"));
-  connect(testVibrationBtn, &QPushButton::clicked, this,
-          [this, vibrationIntensity](){emit testVibrationButtonClicked(vibrationIntensity->value());});
   testVibIntensityHBox->addStretch(1);
   testVibIntensityHBox->addWidget(testVibrationBtn);
   testVibIntensityHBox->addStretch(1);
@@ -808,12 +806,6 @@ QWidget* PreferencesDialog::createTimerTabWidget()
   fixedtimerHBox->addWidget(timeAlert);
   grid->addLayout(fixedtimerHBox, 1, 0);
 
-  connect(timerGroup, &QGroupBox::clicked, this, [recurringTimer, timerGroup](){recurringTimer->setChecked(timerGroup->isChecked());});
-  connect(recurringTimer, &QRadioButton::clicked, this, [recurringTimer, intervalTimer, numTimer](){
-    intervalTimer->setEnabled(recurringTimer->isChecked());
-    numTimer->setEnabled(recurringTimer->isChecked());
-  });
-
   const auto timerBtnSpacer = new QVBoxLayout;
   timerBtnSpacer->addSpacing(5);
   grid->addLayout(timerBtnSpacer, 2, 0);
@@ -828,8 +820,17 @@ QWidget* PreferencesDialog::createTimerTabWidget()
   const auto timerActiveInfo = new QLabel(tr("Timer is active. Wait ..."));
   timerActiveInfo->setVisible(!timerGroup->isEnabled());
 
+  connect(timerGroup, &QGroupBox::clicked, this, [recurringTimer, timerGroup](){
+      recurringTimer->setChecked(timerGroup->isChecked());});
+  connect(recurringTimer, &QRadioButton::clicked, this, [recurringTimer, intervalTimer, numTimer](){
+    intervalTimer->setEnabled(recurringTimer->isChecked());
+    numTimer->setEnabled(recurringTimer->isChecked());
+  });
+  connect(testVibrationBtn, &QPushButton::clicked, this,
+          [this, vibrationIntensity](){emit testVibrationButtonClicked(vibrationIntensity->value());});
   connect(startTimerBtn, &QPushButton::clicked, this,
-          [this, timerGroup, timerActiveInfo, vibrationIntensity, recurringTimer, intervalTimer, numTimer, fixedTimer, timeAlert](){
+          [this, timerGroup, timerActiveInfo, vibrationIntensity,
+          recurringTimer, intervalTimer, numTimer, fixedTimer, timeAlert](){
     int vibIntensity = vibrationIntensity->value();
     timerGroup->setEnabled(false);
     timerActiveInfo->setVisible(!timerGroup->isEnabled());
