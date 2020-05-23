@@ -753,9 +753,9 @@ QWidget* PreferencesDialog::createTimerTabWidget()
 
   const auto vibintensityHBox = new QHBoxLayout;
   const auto vibrationIntensity = new QSlider(Qt::Horizontal);
-  vibrationIntensity->setRange(32, 256);
+  vibrationIntensity->setRange(64, 255);
   vibrationIntensity->setSingleStep(32);
-  vibrationIntensity->setValue(100);
+  vibrationIntensity->setValue(128);
   vibintensityHBox->setSpacing(20);
   vibintensityHBox->addWidget(new QLabel(tr("Vibration Strength")));
   vibintensityHBox->addWidget(vibrationIntensity);

@@ -758,8 +758,7 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
 
 int Spotlight::vibrateDevice(uint8_t strength){
   // send vibration packet to the device
-  if (strength < 32)
-    strength = 32;
+  strength = (strength < 64)? 64 : strength;
 
   uint8_t vibration_data[] = {0x10, 0x01, 0x09, 0x11, 0x03, 0xe8, strength};
   return sendDatatoDevice(vibration_data, 7);
