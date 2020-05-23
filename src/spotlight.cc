@@ -263,13 +263,20 @@ int Spotlight::connectDevice(DeviceId id)
 
     m_device->eventIM = std::make_shared<InputMapper>(m_virtualDevice);
 
-    if (connectSubDevices() > 0){
-      logInfo(device) << tr("Connected device: %1 (%2:%3)")
+    if (connectSubDevices()){
+      QTimer::singleShot(0, this,
+      [this, id = m_device->id, devName = m_device->name, anyConnectedBefore](){
+        logInfo(device) << tr("Connected device: %1 (%2:%3)")
                            .arg(m_device->name)
                            .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                            .arg(m_device->id.productId, 4, 16, QChar('0'));
-      emit deviceConnected(m_device->id, m_device->name);
-      if (!anyConnectedBefore) emit anySpotlightDeviceConnectedChanged(true);
+        emit deviceConnected(m_device->id, m_device->name);
+        if (!anyConnectedBefore) emit anySpotlightDeviceConnectedChanged(true);
+        if (m_device->hidrwNode)
+          emit connectedDeviceSupportVibration(true);
+        else
+          emit connectedDeviceSupportVibration(false);
+      });
     }
   }
   return 0;
@@ -278,16 +285,13 @@ int Spotlight::connectDevice(DeviceId id)
 
 // -------------------------------------------------------------------------------------------------
 int Spotlight::connectSubDevices(){
-  if (!m_device || m_device->subDevices.size() == 0)
-    return -1;
+  if (!m_device) return 0;
+  if (!m_device->subDevices.size()){
+    removeDeviceConnection();
+    return 0;
+  }
 
-  int connectedEventSubDevice = ConnectEventSubDevices();
-  int connectedHidrawSubDevice = ConnectHidrawSubDevices();
-  // Ensures that at least one Event and Hidraw SubDevice are opened
-  if (connectedEventSubDevice > 0 && connectedHidrawSubDevice > 0)
-      return connectedEventSubDevice+connectedHidrawSubDevice;
-
-  return 0;
+  return ConnectEventSubDevices()+ConnectHidrawSubDevices();
 }
 
 
@@ -479,10 +483,11 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
 // -------------------------------------------------------------------------------------------------
 void Spotlight::removeDeviceConnection()
 {
-  logInfo(device) << tr("Device %1 (vendor:%2, product:%3) removed.")
-                      .arg(m_device->name)
-                      .arg(m_device->id.vendorId)
-                      .arg(m_device->id.productId);
+  if (!m_device) return;
+  logInfo(device) << tr("Disconnected device: %1 (%2:%3)")
+                     .arg(m_device->name)
+                     .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                     .arg(m_device->id.productId, 4, 16, QChar('0'));
   emit deviceDisconnected(m_device->id, m_device->name);
   m_device = nullptr;
 }
@@ -490,8 +495,7 @@ void Spotlight::removeDeviceConnection()
 // -------------------------------------------------------------------------------------------------
 void Spotlight::removeSubDeviceConnection(QString DeviceFile)
 {
-  if (!m_device || m_device->subDevices.size() == 0)
-    return;
+  if (!m_device || m_device->subDevices.size() == 0) return;
   QList<SubDevice>::iterator it = m_device->subDevices.begin();
   while (it != m_device->subDevices.end()) {
     if (it->DeviceFile == DeviceFile){
@@ -521,7 +525,7 @@ void Spotlight::onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& conne
           emit anySpotlightDeviceConnectedChanged(false);
         }
         QTimer::singleShot(0, this, [this, devicePath=dev.DeviceFile](){
-          removeSubDeviceConnection(devicePath);
+          removeDeviceConnection();
         });
       }
       break;

@@ -67,6 +67,9 @@ ProjecteurApplication::ProjecteurApplication(int &argc, char **argv, const Optio
   connect(&*m_dialog, &PreferencesDialog::testVibrationButtonClicked, [this](uint8_t strength){
     m_spotlight->vibrateDevice(strength);
   });
+  connect(&*m_spotlight, &Spotlight::connectedDeviceSupportVibration, [this](bool show){
+    m_dialog->showTimerTab(show);
+  });
 
   const QString desktopEnv = m_linuxDesktop->type() == LinuxDesktop::Type::KDE ? "KDE" :
                               m_linuxDesktop->type() == LinuxDesktop::Type::Gnome ? "Gnome"

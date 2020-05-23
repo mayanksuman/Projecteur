@@ -124,7 +124,7 @@ public:
     BusType busType = BusType::Unknown;
     QList<SubDevice> subDevices;
     std::shared_ptr<InputMapper> eventIM; // Sub-devices shares this input mapper
-    int hidrwNode;
+    int hidrwNode=0;
   };
 
   struct ScanResult {
@@ -147,6 +147,7 @@ signals:
   void deviceDisconnected(const DeviceId& id, const QString& name);
   void subDeviceConnected(const DeviceId& id, const QString& name, const QString& path);
   void subDeviceDisconnected(const DeviceId& id, const QString& name, const QString& path);
+  void connectedDeviceSupportVibration(bool timerSupport);
   void anySpotlightDeviceConnectedChanged(bool connected);
   void spotActiveChanged(bool isActive);
 

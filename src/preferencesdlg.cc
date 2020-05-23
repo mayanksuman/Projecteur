@@ -25,7 +25,6 @@
 #include <QRadioButton>
 #include <QSpinBox>
 #include <QStyle>
-#include <QTabWidget>
 #include <QTimeEdit>
 #include <QTimer>
 
@@ -98,13 +97,14 @@ PreferencesDialog::PreferencesDialog(Settings* settings, Spotlight* spotlight,
   const auto settingsWidget = createSettingsTabWidget(settings);
   settingsWidget->setDisabled(settings->overlayDisabled());
 
-  const auto tabWidget = new QTabWidget(this);
+  m_tabWidget = new QTabWidget(this);
 
-  tabWidget->addTab(settingsWidget, tr("Spotlight"));
-  tabWidget->addTab(new DevicesWidget(settings, spotlight, this), tr("Devices"));
-  tabWidget->addTab(createTimerTabWidget(), tr("Timer"));
+  m_tabWidget->addTab(settingsWidget, tr("Spotlight"));
+  m_timerTab = createTimerTabWidget();
+  m_tabWidget->addTab(m_timerTab, tr("Timer"));
+  m_tabWidget->addTab(new DevicesWidget(settings, spotlight, this), tr("Devices"));
 
-  tabWidget->addTab(createLogTabWidget(), tr("Log"));
+  m_tabWidget->addTab(createLogTabWidget(), tr("Log"));
 
   const auto btnHBox = new QHBoxLayout;
   btnHBox->addWidget(m_exitBtn);
@@ -112,12 +112,19 @@ PreferencesDialog::PreferencesDialog(Settings* settings, Spotlight* spotlight,
   btnHBox->addWidget(m_closeMinimizeBtn);
 
   const auto mainVBox = new QVBoxLayout(this);
-  mainVBox->addWidget(tabWidget);
+  mainVBox->addWidget(m_tabWidget);
   mainVBox->addLayout(btnHBox);
 
   connect(settings, &Settings::overlayDisabledChanged, this, [settingsWidget](bool disabled){
     settingsWidget->setDisabled(disabled);
   });
+}
+
+void PreferencesDialog::showTimerTab(bool show){
+  if (show)
+    m_tabWidget->insertTab(m_timerTabIndex, m_timerTab, "Timer");
+  else
+    m_tabWidget->removeTab(m_timerTabIndex);
 }
 
 // -------------------------------------------------------------------------------------------------
