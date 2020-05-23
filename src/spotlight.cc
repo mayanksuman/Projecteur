@@ -238,8 +238,17 @@ int Spotlight::connectDevice(DeviceId id)
   const bool anyConnectedBefore = anySpotlightDeviceConnected();
 
   if (scanResult.devices.isEmpty()){
+    if (anyConnectedBefore)
+      removeDeviceConnection();
     return -1;
   } else {
+    if (anyConnectedBefore){
+      const bool connectedDeviceExist = std::all_of(scanResult.devices.cbegin(), scanResult.devices.cend(),
+        [this](const Device& dev){
+          return (dev.id == m_device->id);
+      });
+      if (!connectedDeviceExist) removeDeviceConnection();
+    }
     if (id.vendorId != 0 && id.productId != 0){
       for (auto dev : scanResult.devices)
       {
@@ -470,7 +479,12 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
 // -------------------------------------------------------------------------------------------------
 void Spotlight::removeDeviceConnection()
 {
-  m_device = std::make_unique<Device>();
+  logInfo(device) << tr("Device %1 (vendor:%2, product:%3) removed.")
+                      .arg(m_device->name)
+                      .arg(m_device->id.vendorId)
+                      .arg(m_device->id.productId);
+  emit deviceDisconnected(m_device->id, m_device->name);
+  m_device = nullptr;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -481,6 +495,8 @@ void Spotlight::removeSubDeviceConnection(QString DeviceFile)
   QList<SubDevice>::iterator it = m_device->subDevices.begin();
   while (it != m_device->subDevices.end()) {
     if (it->DeviceFile == DeviceFile){
+      emit subDeviceDisconnected(m_device->id, m_device->name, it->DeviceFile);
+      logDebug(device) << tr("Sub device %1 removed.").arg(it->DeviceFile);
       it = m_device->subDevices.erase(it);
       break;
     }
@@ -558,9 +574,7 @@ bool Spotlight::addInputEventHandler(SubDevice& subdev)
 
   QSocketNotifier* const notifier = connection->notifier.get();
   connect(notifier, &QSocketNotifier::activated, this,
-  [this, connection, subdev](int fd) {
-    onEventSubDeviceDataAvailable(fd, *connection, subdev);
-  });
+  [this, connection, subdev](int fd) {onEventSubDeviceDataAvailable(fd, *connection, subdev);});
 
   return true;
 }
@@ -639,6 +653,8 @@ bool Spotlight::setupDevEventInotify()
   return true;
 }
 
+
+// -------------------------------------------------------------------------------------------------
 Spotlight::DeviceId Spotlight::connectedDeviceId() const
 {
   DeviceId res;
@@ -664,7 +680,6 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
     result.errorMessages.push_back(tr("HID device path '%1': Cannot list files.").arg(hidDevicePath));
     return result;
   }
-
 
   QDirIterator hidIt(hidDevicePath, QDir::System | QDir::Dirs | QDir::Executable | QDir::NoDotAndDotDot);
   while (hidIt.hasNext())
