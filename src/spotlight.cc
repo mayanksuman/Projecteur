@@ -371,20 +371,6 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openHidrawSubDeviceCo
     return std::make_shared<SubDeviceConnection>();
   }
 
-  struct hidraw_devinfo id{};
-  ioctl(hrfd, HIDIOCGRAWINFO, &id);
-
-  // Check against given device id
-  if ( id.vendor != m_device->id.vendorId || (uint16_t)id.product != m_device->id.productId) // Kernel provided int16_t resulting in overflow
-  {
-    ::close(hrfd);
-    logDebug(device) << tr("Device id mismatch: %1 (%2:%3)")
-                        .arg(devicePath)
-                        .arg(id.vendor, 4, 16, QChar('0'))
-                        .arg(id.product, 4, 16, QChar('0'));
-    return std::make_shared<SubDeviceConnection>();
-  }
-
   auto connection = std::make_shared<SubDeviceConnection> (ConnectionMode::ReadOnly);
   connection->grabbed = false;
 
@@ -419,28 +405,14 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
     return std::make_shared<SubDeviceConnection>();
   }
 
-  struct input_id id{};
-  ioctl(evfd, EVIOCGID, &id); // get device id's
-
-  // Check against given device id
-  if ( id.vendor != m_device->id.vendorId || id.product != m_device->id.productId)
-  {
-    ::close(evfd);
-    logDebug(device) << tr("Device id mismatch: %1 (%2:%3)")
-                        .arg(devicePath)
-                        .arg(id.vendor, 4, 16, QChar('0'))
-                        .arg(id.product, 4, 16, QChar('0'));
-    return std::make_shared<SubDeviceConnection>();
-  }
-
   unsigned long bitmask = 0;
   if (ioctl(evfd, EVIOCGBIT(0, sizeof(bitmask)), &bitmask) < 0)
   {
     ::close(evfd);
     logInfo(device) << tr("Cannot get device properties: %1 (%2:%3)")
                         .arg(devicePath)
-                        .arg(id.vendor, 4, 16, QChar('0'))
-                        .arg(id.product, 4, 16, QChar('0'));
+                        .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                        .arg(m_device->id.productId, 4, 16, QChar('0'));
     return std::make_shared<SubDeviceConnection>();
   }
 
