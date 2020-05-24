@@ -64,7 +64,7 @@ ProjecteurApplication::ProjecteurApplication(int &argc, char **argv, const Optio
   connect(&*m_dialog, &PreferencesDialog::testButtonClicked, [this](){
     emit m_spotlight->spotActiveChanged(true);
   });
-  connect(&*m_dialog, &PreferencesDialog::testVibrationButtonClicked, [this](uint8_t strength){
+  connect(&*m_dialog, &PreferencesDialog::vibrateDevice, [this](uint8_t strength){
     m_spotlight->vibrateDevice(strength);
   });
   connect(&*m_spotlight, &Spotlight::connectedDeviceSupportVibration, [this](bool show){

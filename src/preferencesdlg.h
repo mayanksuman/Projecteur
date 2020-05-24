@@ -44,7 +44,7 @@ public:
 signals:
   void dialogActiveChanged(bool active);
   void testButtonClicked();
-  void testVibrationButtonClicked(uint8_t strength);
+  void vibrateDevice(uint8_t strength);
   void exitApplicationRequested();
 
 protected:
@@ -72,7 +72,8 @@ private:
 private:
   QTabWidget* m_tabWidget;
   QWidget* m_timerTab;
-  int m_timerTabIndex = 1;
+  QTimer* m_restoreTimerBoxQTimer;
+  QList<QTimer*> m_timerList;
   QPushButton* m_closeMinimizeBtn = nullptr;
   QPushButton* m_exitBtn = nullptr;
   bool m_active = false;

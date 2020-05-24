@@ -503,8 +503,8 @@ void Spotlight::removeSubDeviceConnection(QString DeviceFile)
 {
   if (!m_device || m_device->subDevices.size() == 0) return;
   auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
-  QList<SubDevice>::iterator it = m_device->subDevices.begin();
-  while (it != m_device->subDevices.end()) {
+  QList<SubDevice>::iterator it;
+  for (it = m_device->subDevices.begin();it != m_device->subDevices.end(); it++) {
     if (it->DeviceFile == DeviceFile){
       emit subDeviceDisconnected(m_device->id, devName, it->DeviceFile);
       logDebug(device) << tr("Disconnected sub-device: %1 (%2:%3) %4")
@@ -839,11 +839,15 @@ int Spotlight::vibrateDevice(uint8_t strength){
 // -------------------------------------------------------------------------------------------------
 int Spotlight::sendDatatoDevice(uint8_t data[], int data_len){
   if (!anySpotlightDeviceConnected()) return -1;
-  int res;
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
+  int res = -1;
   if (m_device->hidrwNode){
-    res = ::write(m_device->hidrwNode, (char*)data, data_len);
+    res = write(m_device->hidrwNode, (char*)data, data_len);
     if (res < 0)
-      logError(device) << tr("Failed to write on the hidraw device.");
+      logError(device) << tr("Write Failed on the hidraw node of device: %1 (%2:%3)")
+                          .arg(devName)
+                          .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                          .arg(m_device->id.productId, 4, 16, QChar('0'));
     return res;
   }
   else return -1;

@@ -78,11 +78,13 @@ IconButton::IconButton(Font::Icon symbol, QWidget* parent)
 PreferencesDialog::PreferencesDialog(Settings* settings, Spotlight* spotlight,
                                      Mode dialogMode, QWidget* parent)
   : QDialog(parent)
+  , m_restoreTimerBoxQTimer(new QTimer)
   , m_closeMinimizeBtn(new QPushButton(this))
   , m_exitBtn(new QPushButton(tr("&Quit %1").arg(QCoreApplication::applicationName()),this))
 {
   setWindowTitle(QCoreApplication::applicationName() + " - " + tr("Preferences"));
   setWindowIcon(QIcon(":/icons/projecteur-tray.svg"));
+  m_restoreTimerBoxQTimer->setSingleShot(true);
 
   setDialogMode(dialogMode);
   connect(m_closeMinimizeBtn, &QPushButton::clicked, this, [this](){
@@ -120,11 +122,15 @@ PreferencesDialog::PreferencesDialog(Settings* settings, Spotlight* spotlight,
   });
 }
 
+// -------------------------------------------------------------------------------------------------
 void PreferencesDialog::showTimerTab(bool show){
   if (show)
-    m_tabWidget->insertTab(m_timerTabIndex, m_timerTab, "Timer");
-  else
-    m_tabWidget->removeTab(m_timerTabIndex);
+    m_tabWidget->insertTab(1, m_timerTab, "Timer");
+  else {
+    int i = m_tabWidget->indexOf(m_timerTab);
+    if (i>0)
+      m_tabWidget->removeTab(i);
+  }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -769,7 +775,7 @@ QWidget* PreferencesDialog::createTimerTabWidget()
   vibgrid->addLayout(vibintensityHBox, 0, 0);
 
   const auto testVibIntensityHBox = new QHBoxLayout;
-  const auto testVibrationBtn = new QPushButton(tr("&Test Vibration Strength"));
+  const auto testVibrationBtn = new QPushButton(tr("Test &Vibration Strength"));
   testVibIntensityHBox->addStretch(1);
   testVibIntensityHBox->addWidget(testVibrationBtn);
   testVibIntensityHBox->addStretch(1);
@@ -788,85 +794,156 @@ QWidget* PreferencesDialog::createTimerTabWidget()
   timerGroup->setChecked(false);
   const auto grid = new QGridLayout(timerGroup);
 
+  const auto presentationTimerHBox = new QHBoxLayout;
+  const auto presentationTimer =  new QRadioButton(tr("Presentation duration "));
+  const auto presentationDuration = new QSpinBox(this);
+  presentationDuration->setMinimum(10);
+  presentationDuration->setEnabled(false);
+  const auto beforTime = new QSpinBox(this);
+  beforTime->setRange(1, 10);
+  beforTime->setValue(5);
+  beforTime->setEnabled(false);
+  presentationTimerHBox->setSpacing(0);
+  presentationTimerHBox->addWidget(presentationTimer);
+  presentationTimerHBox->addWidget(presentationDuration);
+  presentationTimerHBox->addSpacing(10);
+  presentationTimerHBox->addWidget(new QLabel(tr("Notify me ")));
+  presentationTimerHBox->addWidget(beforTime);
+  presentationTimerHBox->addWidget(new QLabel(tr("minute before the end.")));
+  grid->addLayout(presentationTimerHBox, 0, 0);
+
+  const auto rectimerHBox = new QHBoxLayout;
   const auto recurringTimer =  new QRadioButton(tr("Every "));
   const auto intervalTimer = new QSpinBox(this);
   intervalTimer->setRange(1, 60);
+  intervalTimer->setEnabled(false);
   const auto numTimer = new QSpinBox(this);
   numTimer->setRange(1, 10);
-
-  const auto rectimerHBox = new QHBoxLayout;
+  numTimer->setEnabled(false);
   rectimerHBox->setSpacing(0);
   rectimerHBox->addWidget(recurringTimer);
   rectimerHBox->addWidget(intervalTimer);
   rectimerHBox->addWidget(new QLabel(tr(" minute for ")));
   rectimerHBox->addWidget(numTimer);
   rectimerHBox->addWidget(new QLabel(tr("times.")));
-  grid->addLayout(rectimerHBox, 0, 0);
+  grid->addLayout(rectimerHBox, 1, 0);
 
-  const auto fixedtimerHBox = new QHBoxLayout;
-  const auto fixedTimer = new QRadioButton(tr("At "));
+  const auto clockTimerHBox = new QHBoxLayout;
+  const auto clockTimer = new QRadioButton(tr("At "));
   const auto timeAlert = new QTimeEdit();
   auto curTime = QTime::currentTime();
   timeAlert->setMinimumTime(QTime(curTime.hour(),curTime.minute()+10)); // Set 10 minute after current time as minimum time
-  fixedtimerHBox->setSpacing(0);
-  fixedtimerHBox->addWidget(fixedTimer);
-  fixedtimerHBox->addWidget(timeAlert);
-  grid->addLayout(fixedtimerHBox, 1, 0);
+  timeAlert->setEnabled(false);
+  clockTimerHBox->setSpacing(0);
+  clockTimerHBox->addWidget(clockTimer);
+  clockTimerHBox->addWidget(timeAlert);
+  grid->addLayout(clockTimerHBox, 2, 0);
 
   const auto timerBtnSpacer = new QVBoxLayout;
   timerBtnSpacer->addSpacing(5);
-  grid->addLayout(timerBtnSpacer, 2, 0);
+  grid->addLayout(timerBtnSpacer, 3, 0);
 
   const auto startTimerHBox = new QHBoxLayout;
   const auto startTimerBtn = new QPushButton(tr("&Start Timer"));
   startTimerHBox->addStretch(1);
   startTimerHBox->addWidget(startTimerBtn);
   startTimerHBox->addStretch(1);
-  grid->addLayout(startTimerHBox, 3, 0);
+  grid->addLayout(startTimerHBox, 4, 0);
 
+  const auto timerStatus = new QGroupBox();
+  timerStatus->setFlat(true);
+  timerStatus->setVisible(!timerGroup->isEnabled());
+  const auto timerActivatedGrid = new QGridLayout(timerStatus);
+  const auto timerActiveHBox = new QHBoxLayout;
   const auto timerActiveInfo = new QLabel(tr("Timer is active. Wait ..."));
-  timerActiveInfo->setVisible(!timerGroup->isEnabled());
+  const auto timerDeactivateBtn = new QPushButton(tr("Delete all &Timers"));
+  timerActiveHBox->addWidget(timerActiveInfo);
+  timerActiveHBox->addStretch(1);
+  timerActiveHBox->addWidget(timerDeactivateBtn);
+  timerActivatedGrid->addLayout(timerActiveHBox, 0, 0);
 
-  connect(timerGroup, &QGroupBox::clicked, this, [recurringTimer, timerGroup](){
-      recurringTimer->setChecked(timerGroup->isChecked());});
-  connect(recurringTimer, &QRadioButton::clicked, this, [recurringTimer, intervalTimer, numTimer](){
+  connect(m_restoreTimerBoxQTimer, &QTimer::timeout, this, [timerGroup, timerStatus]() {
+    timerGroup->setEnabled(true);
+    timerStatus->setVisible(!timerGroup->isEnabled());
+  });
+  connect(timerDeactivateBtn, &QPushButton::clicked, this, [this](){
+    QList<QTimer*>::iterator it = m_timerList.begin();
+    while (it != m_timerList.end()) {
+      (*it)->stop();
+      it++;
+    }
+    m_timerList.clear();
+    m_restoreTimerBoxQTimer->setInterval(10);
+  });
+  connect(timerGroup, &QGroupBox::clicked, this, [presentationTimer](bool checked){
+    presentationTimer->setChecked(checked);});
+  connect(presentationTimer, &QRadioButton::toggled, this, [presentationTimer, presentationDuration, beforTime](){
+    presentationDuration->setEnabled(presentationTimer->isChecked());
+    beforTime->setEnabled(presentationTimer->isChecked());
+  });
+  connect(recurringTimer, &QRadioButton::toggled, this, [recurringTimer, intervalTimer, numTimer](){
     intervalTimer->setEnabled(recurringTimer->isChecked());
     numTimer->setEnabled(recurringTimer->isChecked());
   });
+  connect(clockTimer, &QRadioButton::toggled, this, [clockTimer, timeAlert](){
+    timeAlert->setEnabled(clockTimer->isChecked());
+  });
   connect(testVibrationBtn, &QPushButton::clicked, this,
-          [this, vibrationIntensity](){emit testVibrationButtonClicked(vibrationIntensity->value());});
+          [this, vibrationIntensity](){emit vibrateDevice(vibrationIntensity->value());});
   connect(startTimerBtn, &QPushButton::clicked, this,
-          [this, timerGroup, timerActiveInfo, vibrationIntensity,
-          recurringTimer, intervalTimer, numTimer, fixedTimer, timeAlert](){
+          [this, timerGroup, timerActiveInfo, timerStatus, vibrationIntensity, presentationTimer,
+          presentationDuration, beforTime, recurringTimer, intervalTimer, numTimer,
+          clockTimer, timeAlert](){
     int vibIntensity = vibrationIntensity->value();
     timerGroup->setEnabled(false);
-    timerActiveInfo->setVisible(!timerGroup->isEnabled());
+    timerStatus->setVisible(true);
+
+    if (presentationTimer->isChecked()){
+      int timermin = (presentationDuration->value() - beforTime->value());
+      if (timermin){
+        QTimer* t=new QTimer;t->setSingleShot(true);t->setInterval(timermin*60*1000);
+        connect(t, &QTimer::timeout, this, [this, vibIntensity](){
+          emit vibrateDevice(vibIntensity);});t->start();
+        m_timerList.push_back(t);
+      } else
+        logInfo(preferences) << "Timer not set.";
+      timerActiveInfo->setText("Timer is active. Wait ...");
+      m_restoreTimerBoxQTimer->setInterval(presentationDuration->value()*60*1000);
+      m_restoreTimerBoxQTimer->start();
+    }
+
     if (recurringTimer->isChecked()){
       int i;
-      for(i=1;i<=numTimer->value();i++)
-        QTimer::singleShot(intervalTimer->value()*60*1000*i,
-                             [this, vibIntensity](){emit testVibrationButtonClicked(vibIntensity);});
-      QTimer::singleShot(intervalTimer->value()*60*1000*numTimer->value(),
-                           [timerGroup, timerActiveInfo](){
-        timerGroup->setEnabled(true);
-        timerActiveInfo->setVisible(!timerGroup->isEnabled());
-      });
+      for(i=1;i<=numTimer->value();i++) {
+        QTimer* t=new QTimer;t->setSingleShot(true);t->setInterval(intervalTimer->value()*60*1000*i/2);
+        connect(t, &QTimer::timeout, this, [this, vibIntensity](){
+          emit vibrateDevice(vibIntensity);});t->start();
+        m_timerList.push_back(t);
+      }
+      if (numTimer->value() > 1)
+        timerActiveInfo->setText("Timers are active. Wait ...");
+      else
+        timerActiveInfo->setText("Timer is active. Wait ...");
+      m_restoreTimerBoxQTimer->setInterval(intervalTimer->value()*numTimer->value()*60*1000);
+      m_restoreTimerBoxQTimer->start();
     }
-    if (fixedTimer->isChecked()){
+
+    if (clockTimer->isChecked()){
       auto tAlert = timeAlert->time();
       auto curTime = QTime::currentTime();
       if (tAlert > curTime) {
-        QTimer::singleShot(curTime.msecsTo(tAlert),
-                             [this, vibIntensity, timerGroup, timerActiveInfo](){
-          emit testVibrationButtonClicked(vibIntensity);
-          timerGroup->setEnabled(true);
-          timerActiveInfo->setVisible(!timerGroup->isEnabled());
-        });
+        QTimer* t=new QTimer;t->setSingleShot(true);t->setInterval(curTime.msecsTo(tAlert));
+        connect(t, &QTimer::timeout, this, [this, vibIntensity](){
+          emit vibrateDevice(vibIntensity);});t->start();
+        m_timerList.push_back(t);
+        timerActiveInfo->setText("Timer is active. Wait ...");
+        m_restoreTimerBoxQTimer->setInterval(curTime.msecsTo(tAlert));
+        m_restoreTimerBoxQTimer->start();
       } else {
         logInfo(preferences) << tr("Timer not set.");
       }
     }
-      emit testVibrationButtonClicked(vibIntensity);
+      emit vibrateDevice(vibIntensity);
   });
 
   const auto mainVBox = new QVBoxLayout(widget);
@@ -874,11 +951,12 @@ QWidget* PreferencesDialog::createTimerTabWidget()
   mainVBox->addSpacing(25);
   mainVBox->addWidget(timerGroup);
   mainVBox->addSpacing(5);
-  mainVBox->addWidget(timerActiveInfo);
+  mainVBox->addWidget(timerStatus);
   mainVBox->addStretch(1);
   return widget;
 }
 
+// -------------------------------------------------------------------------------------------------
 void PreferencesDialog::setDialogActive(bool active)
 {
   if (active == m_active)
