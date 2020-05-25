@@ -226,18 +226,18 @@ int main(int argc, char *argv[])
 
         const QStringList subDeviceList = [&device](){
           QStringList subDeviceList;
-          for (const auto& d: device.subDevices) {
+          for (const auto& d: device.eventSubDevices) {
             if( d.DeviceFile.size()) subDeviceList.push_back(d.DeviceFile);
           }
           return subDeviceList;
         }();
 
-        const bool allReadable = std::all_of(device.subDevices.cbegin(), device.subDevices.cend(),
+        const bool allReadable = std::all_of(device.eventSubDevices.cbegin(), device.eventSubDevices.cend(),
         [](const auto& subDevice){
           return (subDevice.DeviceReadable);
         });
 
-        const bool allWriteable = std::all_of(device.subDevices.cbegin(), device.subDevices.cend(),
+        const bool allWriteable = std::all_of(device.eventSubDevices.cbegin(), device.eventSubDevices.cend(),
         [](const auto& subDevice){
           return (subDevice.DeviceWritable);
         });

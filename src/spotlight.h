@@ -8,6 +8,7 @@
 #include <map>
 #include <vector>
 #include <set>
+
 #include <linux/input.h>
 #include <hidapi/hidapi.h>
 
@@ -68,24 +69,19 @@ public:
 
   bool spotActive() const { return m_spotActive; }
   bool anySpotlightDeviceConnected() const;
-  enum class ConnectionMode : uint8_t { ReadOnly, WriteOnly, ReadWrite };
   struct SubDeviceConnection {
     SubDeviceConnection() = default;
-    SubDeviceConnection(const ConnectionMode mode)
-            : mode(mode){};
 
-    ConnectionMode mode;
+    int fd = 0;
     bool grabbed = false;
     InputBuffer<12> inputBuffer;
-    std::shared_ptr<InputMapper> im; // each device connection for a device shares the same input mapper
+    std::shared_ptr<InputMapper> im; // each subdevice connection shares the same Root Device imput mapper
     std::unique_ptr<QSocketNotifier> notifier;
   };
 
-  enum class SubDeviceType : uint8_t { Event, Hidraw };
-  struct SubDevice {
+  struct EventSubDevice {
     QString DeviceFile;
     QString phys;
-	SubDeviceType type;
 	DeviceFlags deviceFlags = DeviceFlags::NoFlags;
     std::shared_ptr<SubDeviceConnection> connection;
     bool hasRelativeEvents = false;
@@ -122,9 +118,10 @@ public:
     QString userName;
     DeviceId id;
     BusType busType = BusType::Unknown;
-    QList<SubDevice> subDevices;
-    std::shared_ptr<InputMapper> eventIM; // Sub-devices shares this input mapper
-    hid_device* hidrwNode;
+    bool hasHID = false;
+    QList<EventSubDevice> eventSubDevices;
+    std::shared_ptr<InputMapper> eventIM; // Event Sub-devices shares this input mapper
+    hid_device* hidrwNode = nullptr;
   };
 
   struct ScanResult {
@@ -147,6 +144,7 @@ signals:
   void deviceDisconnected(const DeviceId& id, const QString& name);
   void subDeviceConnected(const DeviceId& id, const QString& name, const QString& path);
   void subDeviceDisconnected(const DeviceId& id, const QString& name, const QString& path);
+  void connectedDeviceSupportVibration(bool timerSupport);
   void anySpotlightDeviceConnectedChanged(bool connected);
   void spotActiveChanged(bool isActive);
 
@@ -154,17 +152,16 @@ private:
   enum class ConnectionResult { CouldNotOpen, NotASpotlightDevice, Connected };
   ConnectionResult connectSpotlightDevice(const QString& devicePath, bool verbose = false);
 
-  std::shared_ptr<SubDeviceConnection> openEventSubDeviceConnection(SubDevice& devicePath);
-  bool addInputEventHandler(SubDevice& subdev);
+  std::shared_ptr<SubDeviceConnection> openEventSubDeviceConnection(EventSubDevice&);
+  bool addInputEventHandler(EventSubDevice&);
+  bool openHID();
 
   bool setupDevEventInotify();
   int connectDevice(DeviceId id = DeviceId(0, 0, ""));
-  int connectSubDevices();
-  int ConnectEventSubDevices();
-  int ConnectHidrawSubDevices();
+  int connectEventSubDevices();
   void removeDeviceConnection();
-  void removeSubDeviceConnection(QString DeviceFile);
-  void onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& connection, const SubDevice& dev);
+  void removeEventSubDeviceConnection(QString DeviceFile);
+  void onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& connection, const EventSubDevice& subdev);
 
   const Options m_options;
 

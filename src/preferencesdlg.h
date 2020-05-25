@@ -3,6 +3,8 @@
 
 #include <QDialog>
 #include <QToolButton>
+#include <QTabWidget>
+#include <QTimer>
 
 class QComboBox;
 class QGroupBox;
@@ -38,11 +40,12 @@ public:
   bool dialogActive() const { return m_active; }
   Mode mode() const { return m_dialogMode; }
   void setMode(Mode dialogMode);
+  void showTimerTab(bool);
 
 signals:
   void dialogActiveChanged(bool active);
   void testButtonClicked();
-  void testVibrationButtonClicked(uint8_t strength);
+  void vibrateDevice(uint8_t strength);
   void exitApplicationRequested();
 
 protected:
@@ -68,6 +71,10 @@ private:
   QWidget* createTimerTabWidget();
 
 private:
+  QTabWidget* m_tabWidget;
+  QWidget* m_timerTab;
+  QTimer* m_restoreTimerBoxQTimer;
+  QList<QTimer*> m_timerList;
   QPushButton* m_closeMinimizeBtn = nullptr;
   QPushButton* m_exitBtn = nullptr;
   bool m_active = false;

@@ -232,7 +232,6 @@ bool Spotlight::anySpotlightDeviceConnected() const
     return false;
 }
 
-
 // -------------------------------------------------------------------------------------------------
 // This function connect to device with the given DeviceId
 // If the proper DeviceId is not given or do not match then it connect to first scanned device.
@@ -242,8 +241,18 @@ int Spotlight::connectDevice(DeviceId id)
   const bool anyConnectedBefore = anySpotlightDeviceConnected();
 
   if (scanResult.devices.isEmpty()){
+    if (anyConnectedBefore)
+      removeDeviceConnection();
     return -1;
   } else {
+    if (anyConnectedBefore){
+      const bool connectedDeviceExist = std::all_of(scanResult.devices.cbegin(), scanResult.devices.cend(),
+        [this](const Device& dev){
+          return (dev.id == m_device->id);
+      });
+      if (!connectedDeviceExist) removeDeviceConnection();
+      else return 0;
+    }
     if (id.vendorId != 0 && id.productId != 0){
       for (auto dev : scanResult.devices)
       {
@@ -258,72 +267,34 @@ int Spotlight::connectDevice(DeviceId id)
 
     m_device->eventIM = std::make_shared<InputMapper>(m_virtualDevice);
 
-    if (connectSubDevices() > 0){
-      logInfo(device) << tr("Connected device: %1 (%2:%3)")
-                           .arg(m_device->name)
+    if (connectEventSubDevices()){
+      m_device->hasHID = openHID();
+      QTimer::singleShot(0, this, [this, anyConnectedBefore, id = m_device->id,
+      devName = m_device->userName.isEmpty()?m_device->name:m_device->userName](){
+        logInfo(device) << tr("Connected device: %1 (%2:%3)")
+                           .arg(devName)
                            .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                            .arg(m_device->id.productId, 4, 16, QChar('0'));
-      emit deviceConnected(m_device->id, m_device->name);
-      if (!anyConnectedBefore) emit anySpotlightDeviceConnectedChanged(true);
+        emit deviceConnected(m_device->id, devName);
+        if (!anyConnectedBefore) emit anySpotlightDeviceConnectedChanged(true);
+        if (m_device->hasHID)
+          emit connectedDeviceSupportVibration(true);
+        else
+          emit connectedDeviceSupportVibration(false);
+      });
     }
   }
   return 0;
 }
 
-
 // -------------------------------------------------------------------------------------------------
-int Spotlight::connectSubDevices(){
-  if (!m_device || m_device->subDevices.size() == 0)
-    return -1;
-
-  int connectedEventSubDevice = ConnectEventSubDevices();
-  int connectedHidrawSubDevice = ConnectHidrawSubDevices();
-  // Ensures that at least one Event and Hidraw SubDevice are opened
-  if (connectedEventSubDevice > 0 && connectedHidrawSubDevice > 0)
-      return connectedEventSubDevice+connectedHidrawSubDevice;
-
-  return 0;
-}
-
-
-// -------------------------------------------------------------------------------------------------
-int Spotlight::ConnectHidrawSubDevices()
-{
-  int connectedHidrawSubDevice = 0;
-  for (auto& subdev : m_device->subDevices)
-  {
-    const bool isNonBlocking = !!(subdev.deviceFlags & DeviceFlag::NonBlocking);
-    if (subdev.type == SubDeviceType::Hidraw
-        && subdev.DeviceWritable
-        && subdev.DeviceReadable
-        && subdev.DeviceFile.size() > 0){
-      auto handle = hid_open_path(subdev.DeviceFile.toLocal8Bit().constData());
-      if (!handle){
-        logError(device) << tr("Failed to open hidraw device at %1.").arg(subdev.DeviceFile);
-        hid_close(handle);
-        removeSubDeviceConnection(subdev.DeviceFile);
-        continue;
-      }else {
-        if (isNonBlocking) hid_set_nonblocking(handle, 1);
-        connectedHidrawSubDevice++;
-        m_device->hidrwNode = handle;
-        subdev.connection = std::make_shared<SubDeviceConnection>(ConnectionMode::ReadWrite);
-        break; // Only one readwrite hidraw device is enough.
-      }
-    }
-  }
-  return connectedHidrawSubDevice;
-}
-
-
-// -------------------------------------------------------------------------------------------------
-int Spotlight::ConnectEventSubDevices()
+int Spotlight::connectEventSubDevices()
 {
   int connectedEventSubDevices = 0;
-  for (auto& subdev : m_device->subDevices)
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
+  for (auto& subdev : m_device->eventSubDevices)
   {
-    if (subdev.type == SubDeviceType::Event
-        && subdev.DeviceReadable
+    if (subdev.DeviceReadable
         && subdev.DeviceFile.size() > 0){
       // Check if a connection for the path exists...
       if (subdev.connection
@@ -331,8 +302,7 @@ int Spotlight::ConnectEventSubDevices()
           && subdev.connection->notifier->isEnabled()) {
         connectedEventSubDevices++;
         continue;
-      }
-      else {
+      } else {
         subdev.connection = openEventSubDeviceConnection(subdev);
         subdev.connection->im = m_device->eventIM;
         if (subdev.connection
@@ -343,15 +313,15 @@ int Spotlight::ConnectEventSubDevices()
           connectedEventSubDevices++;
 
           logDebug(device) << tr("Connected event sub-device: %1 (%2:%3) %4")
-                              .arg(m_device->name)
+                              .arg(devName)
                               .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                               .arg(m_device->id.productId, 4, 16, QChar('0'))
                               .arg(subdev.DeviceFile);
-          emit subDeviceConnected(m_device->id, m_device->name, subdev.DeviceFile);
+          emit subDeviceConnected(m_device->id, devName, subdev.DeviceFile);
         }else
         {
           logError(device) << tr("Connection failed for event sub-device: %1 (%2:%3) %4")
-                              .arg(m_device->name)
+                              .arg(devName)
                               .arg(m_device->id.vendorId, 4, 16, QChar('0'))
                               .arg(m_device->id.productId, 4, 16, QChar('0'))
                               .arg(subdev.DeviceFile);
@@ -364,7 +334,34 @@ int Spotlight::ConnectEventSubDevices()
 
 
 // -------------------------------------------------------------------------------------------------
-std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceConnection(SubDevice& subdev)
+bool Spotlight::openHID()
+{
+  if (anySpotlightDeviceConnected() && m_device->eventSubDevices.size()){
+    struct hid_device_info *cur_dev;
+    struct hid_device_info *devices=NULL;
+    hid_free_enumeration(devices);
+    devices = hid_enumerate(m_device->id.vendorId, m_device->id.productId);
+    cur_dev = devices;
+    while (cur_dev) {
+      if (cur_dev -> interface_number == 2){
+        hid_device* hidrwNode = hid_open_path(cur_dev->path);
+        if (!hidrwNode) {
+          printf("Unable To Connect to Device");
+          return false;
+        } else {
+          hid_set_nonblocking(hidrwNode, 1);
+          m_device->hidrwNode = hidrwNode;
+          return true;
+        }
+      }
+      cur_dev = cur_dev->next;
+    }
+  }
+  return false;
+}
+
+// -------------------------------------------------------------------------------------------------
+std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceConnection(EventSubDevice& subdev)
 {
   auto devicePath = subdev.DeviceFile;
   const int evfd = ::open(devicePath.toLocal8Bit().constData(), O_RDONLY, 0);
@@ -374,32 +371,18 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
     return std::make_shared<SubDeviceConnection>();
   }
 
-  struct input_id id{};
-  ioctl(evfd, EVIOCGID, &id); // get device id's
-
-  // Check against given device id
-  if ( id.vendor != m_device->id.vendorId || id.product != m_device->id.productId)
-  {
-    ::close(evfd);
-    logDebug(device) << tr("Device id mismatch: %1 (%2:%3)")
-                        .arg(devicePath)
-                        .arg(id.vendor, 4, 16, QChar('0'))
-                        .arg(id.product, 4, 16, QChar('0'));
-    return std::make_shared<SubDeviceConnection>();
-  }
-
   unsigned long bitmask = 0;
   if (ioctl(evfd, EVIOCGBIT(0, sizeof(bitmask)), &bitmask) < 0)
   {
     ::close(evfd);
-    logWarn(device) << tr("Cannot get device properties: %1 (%2:%3)")
+    logInfo(device) << tr("Cannot get device properties: %1 (%2:%3)")
                         .arg(devicePath)
-                        .arg(id.vendor, 4, 16, QChar('0'))
-                        .arg(id.product, 4, 16, QChar('0'));
+                        .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                        .arg(m_device->id.productId, 4, 16, QChar('0'));
     return std::make_shared<SubDeviceConnection>();
   }
 
-  auto connection = std::make_shared<SubDeviceConnection> (ConnectionMode::ReadOnly);
+  auto connection = std::make_shared<SubDeviceConnection> ();
 
   connection->grabbed = [this, evfd, &devicePath]()
   {
@@ -433,17 +416,18 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
   if ((fcntl(evfd, F_GETFL, 0) & O_NONBLOCK) == O_NONBLOCK) {
     subdev.deviceFlags |= DeviceFlag::NonBlocking;
   }
+  connection->fd = evfd;
 
   // Create socket notifier
-    connection->notifier = std::make_unique<QSocketNotifier>(evfd, QSocketNotifier::Read);
-    QSocketNotifier* const notifier = connection->notifier.get();
-    // Auto clean up and close descriptor on destruction of notifier
-    connect(notifier, &QSocketNotifier::destroyed, [grabbed = connection->grabbed, notifier]() {
-      if (grabbed) {
-        ioctl(static_cast<int>(notifier->socket()), EVIOCGRAB, 0);
-      }
+  connection->notifier = std::make_unique<QSocketNotifier>(evfd, QSocketNotifier::Read);
+  QSocketNotifier* const notifier = connection->notifier.get();
+  // Auto clean up and close descriptor on destruction of notifier
+  connect(notifier, &QSocketNotifier::destroyed, [grabbed = connection->grabbed, notifier]() {
+    if (grabbed) {
+      ioctl(static_cast<int>(notifier->socket()), EVIOCGRAB, 0);
+    }
       ::close(static_cast<int>(notifier->socket()));
-    });
+  });
 
   return connection;
 }
@@ -452,18 +436,49 @@ std::shared_ptr<Spotlight::SubDeviceConnection> Spotlight::openEventSubDeviceCon
 // -------------------------------------------------------------------------------------------------
 void Spotlight::removeDeviceConnection()
 {
-  hid_close(m_device->hidrwNode);
-  m_device = std::make_unique<Device>();
+  if (!m_device) return;
+  // Remove Event Sub devices
+  if (m_device->eventSubDevices.size())
+    for(auto& subdev: m_device->eventSubDevices)
+      removeEventSubDeviceConnection(subdev.DeviceFile);
+  //Remove HID handle and connection
+  if (m_device->hasHID){
+    hid_close(m_device->hidrwNode);
+    //m_device->hidConnection->notifier->setEnabled(false);
+  }
+  //Log the disconnection
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
+  logInfo(device) << tr("Disconnected device: %1 (%2:%3)")
+                     .arg(devName)
+                     .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                     .arg(m_device->id.productId, 4, 16, QChar('0'));
+  // Disconnection Signal
+  emit deviceDisconnected(m_device->id, devName);
+  // Remove the device
+  m_device = nullptr;
 }
 
-void Spotlight::removeSubDeviceConnection(QString DeviceFile)
+// -------------------------------------------------------------------------------------------------
+void Spotlight::removeEventSubDeviceConnection(QString DeviceFile)
 {
-  if (!m_device || m_device->subDevices.size() == 0)
-    return;
-  QList<SubDevice>::iterator it = m_device->subDevices.begin();
-  while (it != m_device->subDevices.end()) {
+  if (!m_device || m_device->eventSubDevices.size() == 0) return;
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
+
+  QList<EventSubDevice>::iterator it;
+  for (it = m_device->eventSubDevices.begin();it != m_device->eventSubDevices.end(); it++) {
     if (it->DeviceFile == DeviceFile){
-      it = m_device->subDevices.erase(it);
+      emit subDeviceDisconnected(m_device->id, devName, it->DeviceFile);
+      logDebug(device) << tr("Disconnected sub-device: %1 (%2:%3) %4")
+                          .arg(devName)
+                          .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                          .arg(m_device->id.productId, 4, 16, QChar('0'))
+                          .arg(it->DeviceFile);
+      it->connection->notifier->setEnabled(false);
+      if (it->connection->fd){
+        if(it->connection->grabbed) ioctl(it->connection->fd, EVIOCGRAB, 0);
+        ::close(it->connection->fd);
+      }
+      it = m_device->eventSubDevices.erase(it);
       break;
     }
   }
@@ -471,7 +486,7 @@ void Spotlight::removeSubDeviceConnection(QString DeviceFile)
 
 
 // -------------------------------------------------------------------------------------------------
-void Spotlight::onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& connection, const SubDevice& dev)
+void Spotlight::onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& connection, const EventSubDevice& dev)
 {
   const bool isNonBlocking = !!(dev.deviceFlags & DeviceFlag::NonBlocking);
   while (true)
@@ -487,7 +502,7 @@ void Spotlight::onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& conne
           emit anySpotlightDeviceConnectedChanged(false);
         }
         QTimer::singleShot(0, this, [this, devicePath=dev.DeviceFile](){
-          removeSubDeviceConnection(devicePath);
+          removeDeviceConnection();
         });
       }
       break;
@@ -531,10 +546,10 @@ void Spotlight::onEventSubDeviceDataAvailable(int fd, SubDeviceConnection& conne
 
 
 // -------------------------------------------------------------------------------------------------
-bool Spotlight::addInputEventHandler(SubDevice& subdev)
+bool Spotlight::addInputEventHandler(EventSubDevice& subdev)
 {
   auto connection = subdev.connection;
-  if (!connection ||subdev.type != SubDeviceType::Event || !connection->notifier || !connection->notifier->isEnabled()) {
+  if (!connection || !connection->notifier || !connection->notifier->isEnabled()) {
     return false;
   }
 
@@ -602,13 +617,13 @@ bool Spotlight::setupDevEventInotify()
   return true;
 }
 
+
+// -------------------------------------------------------------------------------------------------
 Spotlight::DeviceId Spotlight::connectedDeviceId() const
 {
-  DeviceId res;
-  if (anySpotlightDeviceConnected())  res = m_device->id;
-  return res;
+  if (anySpotlightDeviceConnected()) return m_device->id;
+  return DeviceId(0, 0, "");
 }
-
 
 // -------------------------------------------------------------------------------------------------
 Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& additionalDevices)
@@ -627,7 +642,6 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
     result.errorMessages.push_back(tr("HID device path '%1': Cannot list files.").arg(hidDevicePath));
     return result;
   }
-
 
   QDirIterator hidIt(hidDevicePath, QDir::System | QDir::Dirs | QDir::Executable | QDir::NoDotAndDotDot);
   while (hidIt.hasNext())
@@ -678,8 +692,7 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
           break;
         }
 
-        SubDevice subDevice;
-        subDevice.type = SubDeviceType::Event;
+        EventSubDevice subDevice;
         QDirIterator dirIt(inputIt.filePath(), QDir::System | QDir::Dirs | QDir::Executable | QDir::NoDotAndDotDot);
         while (dirIt.hasNext())
         {
@@ -709,43 +722,20 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
         subDevice.DeviceReadable = fi.isReadable();
         subDevice.DeviceWritable = fi.isWritable();
 
-        rootDevice.subDevices.push_back(subDevice);
-      }
-    }
-    else {
-      // If input sub-directory was not there then
-      // Iterate over 'hidraw' sub-dircectory, check for hidraw device node
-      const QFileInfo hidrawSubdir(QDir(hidIt.filePath()).filePath("hidraw"));
-      if (hidrawSubdir.exists() || hidrawSubdir.isExecutable()){
-        QDirIterator hidrawIt(hidrawSubdir.filePath(), QDir::System | QDir::Dirs | QDir::Executable | QDir::NoDotAndDotDot);
-        while (hidrawIt.hasNext())
-        {
-          hidrawIt.next();
-          if (!hidrawIt.fileName().startsWith("hidraw")) continue;
-          SubDevice subDevice;
-          subDevice.type = SubDeviceType::Hidraw;
-          subDevice.DeviceFile = readPropertyFromDeviceFile(QDir(hidrawIt.filePath()).filePath("uevent"), "DEVNAME");
-          if (!subDevice.DeviceFile.isEmpty()) {
-            subDevice.DeviceFile = QDir("/dev").filePath(subDevice.DeviceFile);
-            const QFileInfo fi(subDevice.DeviceFile);
-            subDevice.DeviceReadable = fi.isReadable();
-            subDevice.DeviceWritable = fi.isWritable();
-            rootDevice.subDevices.push_back(subDevice);
-          }
-        }
+        rootDevice.eventSubDevices.push_back(subDevice);
       }
     }
   }
 
   for (const auto& dev : result.devices)
   {
-    const bool allReadable = std::all_of(dev.subDevices.cbegin(), dev.subDevices.cend(),
-    [](const SubDevice& subDevice){
+    const bool allReadable = std::all_of(dev.eventSubDevices.cbegin(), dev.eventSubDevices.cend(),
+    [](const EventSubDevice& subDevice){
       return (subDevice.DeviceFile.isEmpty() || subDevice.DeviceReadable);
     });
 
-    const bool allWriteable = std::all_of(dev.subDevices.cbegin(), dev.subDevices.cend(),
-    [](const SubDevice& subDevice){
+    const bool allWriteable = std::all_of(dev.eventSubDevices.cbegin(), dev.eventSubDevices.cend(),
+    [](const EventSubDevice& subDevice){
       return (subDevice.DeviceFile.isEmpty() || subDevice.DeviceWritable);
     });
 
@@ -756,21 +746,30 @@ Spotlight::ScanResult Spotlight::scanForDevices(const QList<SupportedDevice>& ad
   return result;
 }
 
+// -------------------------------------------------------------------------------------------------
 int Spotlight::vibrateDevice(uint8_t strength){
   // send vibration packet to the device
   strength = (strength < 64)? 64 : strength;
 
   uint8_t vibration_data[] = {0x10, 0x01, 0x09, 0x11, 0x03, 0xe8, strength};
-  return sendDatatoDevice(vibration_data, 7);
-        //res = hid_exit();
+  int res = sendDatatoDevice(vibration_data, 7);
+  if (res < 0)
+    logError(device) << tr("Attempt to vibrate device failed.");
+  return res;
 }
 
+// -------------------------------------------------------------------------------------------------
 int Spotlight::sendDatatoDevice(uint8_t data[], int data_len){
   if (!anySpotlightDeviceConnected()) return -1;
-  int res;
-  if (m_device->hidrwNode){
+  auto devName = m_device->userName.isEmpty()?m_device->name:m_device->userName;
+  int res = -1;
+  if (m_device->hasHID){
     res = hid_write(m_device->hidrwNode, data, data_len);
-    return res;
+    if (res < 0)
+      logError(device) << tr("Write Failed on the hidraw node of device: %1 (%2:%3)")
+                          .arg(devName)
+                          .arg(m_device->id.vendorId, 4, 16, QChar('0'))
+                          .arg(m_device->id.productId, 4, 16, QChar('0'));
   }
-  else return -1;
+  return res;
 }
