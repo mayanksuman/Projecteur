@@ -304,11 +304,9 @@ ssize_t SubDeviceConnection::sendData(const QByteArray& hidppMsg)
   return res;
 }
 
-
 // -------------------------------------------------------------------------------------------------
 ssize_t SubDeviceConnection::sendData(const void* hidppMsg, size_t hidppMsgLen)
 {
   const QByteArray hidppMsgArr(reinterpret_cast<const char*>(hidppMsg), hidppMsgLen);
-
   return sendData(hidppMsgArr);
 }

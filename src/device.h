@@ -186,4 +186,7 @@ public:
                                                      const DeviceConnection& dc);
 
   SubHidrawConnection(Token, const QString& path);
+
+private:
+    void ProcessHidrawReads(int);
 };
