@@ -130,6 +130,7 @@ public:
   void disableWrite(); // disable sending data
   void enableWrite(); // enable sending data
 
+  void initDevice();
   ssize_t sendData(const QByteArray& hidppMsg);                          // Send HID++ Message to HIDraw connection
   ssize_t sendData(const void* hidppMsg, size_t hidppMsgLen); // Send HID++ Message to HIDraw connection
 
@@ -186,7 +187,4 @@ public:
                                                      const DeviceConnection& dc);
 
   SubHidrawConnection(Token, const QString& path);
-
-private:
-    void ProcessHidrawReads(int);
 };

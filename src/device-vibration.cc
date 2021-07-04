@@ -433,5 +433,4 @@ void VibrationSettingsWidget::sendVibrateCommand()
   if (res != sizeof(vibrateCmd)) {
     logWarn(device) << "Could not write vibrate command to device socket.";
   }
-  m_subDeviceConnection->disableWrite();
 }
